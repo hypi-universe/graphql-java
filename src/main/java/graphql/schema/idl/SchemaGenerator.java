@@ -260,16 +260,13 @@ public class SchemaGenerator {
      */
     public GraphQLSchema makeExecutableSchema(Options options, TypeDefinitionRegistry typeRegistry, RuntimeWiring wiring) throws SchemaProblem {
 
-        TypeDefinitionRegistry typeRegistryCopy = new TypeDefinitionRegistry();
-        typeRegistryCopy.merge(typeRegistry);
+        schemaGeneratorHelper.addDeprecatedDirectiveDefinition(typeRegistry);
 
-        schemaGeneratorHelper.addDeprecatedDirectiveDefinition(typeRegistryCopy);
-
-        List<GraphQLError> errors = typeChecker.checkTypeRegistry(typeRegistryCopy, wiring, options.enforceSchemaDirectives);
+        List<GraphQLError> errors = typeChecker.checkTypeRegistry(typeRegistry, wiring, options.enforceSchemaDirectives);
         if (!errors.isEmpty()) {
             throw new SchemaProblem(errors);
         }
-        BuildContext buildCtx = new BuildContext(typeRegistryCopy, wiring);
+        BuildContext buildCtx = new BuildContext(typeRegistry, wiring);
 
         return makeExecutableSchemaImpl(buildCtx);
     }
