@@ -14,19 +14,13 @@ import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLNonNull;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLType;
+import graphql.schema.PropertyDataFetcherHelper;
+import graphql.util.FpKit;
 
-import java.beans.BeanInfo;
-import java.beans.IntrospectionException;
-import java.beans.Introspector;
-import java.beans.PropertyDescriptor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static graphql.schema.GraphQLTypeUtil.isList;
 import static graphql.schema.GraphQLTypeUtil.isNonNull;
@@ -36,7 +30,7 @@ public class AstValueHelper {
 
     /**
      * Produces a GraphQL Value AST given a Java value.
-     *
+     * <p>
      * A GraphQL type must be provided, which will be used to interpret different
      * Java values.
      *
@@ -53,10 +47,9 @@ public class AstValueHelper {
      *
      * @param value - the java value to be converted into graphql ast
      * @param type  the graphql type of the object
-     *
      * @return a grapql language ast {@link Value}
      */
-    public static Value astFromValue(Object value, GraphQLType type) {
+    public static Value<?> astFromValue(Object value, GraphQLType type) {
         if (value == null) {
             return null;
         }
@@ -110,29 +103,29 @@ public class AstValueHelper {
                 return IntValue.newIntValue().value(new BigInteger(stringValue)).build();
             }
 
-            // String types are just strings but JSON'ised
-            return StringValue.newStringValue().value(jsonStringify(stringValue)).build();
+            return StringValue.newStringValue().value(stringValue).build();
         }
 
         throw new AssertException("'Cannot convert value to AST: " + serialized);
     }
 
-    private static Value handleInputObject(Object _value, GraphQLInputObjectType type) {
-        Map mapValue = objToMap(_value);
+    private static Value<?> handleInputObject(Object javaValue, GraphQLInputObjectType type) {
         List<GraphQLInputObjectField> fields = type.getFields();
         List<ObjectField> fieldNodes = new ArrayList<>();
         fields.forEach(field -> {
+            String fieldName = field.getName();
             GraphQLInputType fieldType = field.getType();
-            Value nodeValue = astFromValue(mapValue.get(field.getName()), fieldType);
+            Object fieldValueObj = PropertyDataFetcherHelper.getPropertyValue(fieldName, javaValue, fieldType);
+            Value<?> nodeValue = astFromValue(fieldValueObj, fieldType);
             if (nodeValue != null) {
 
-                fieldNodes.add(ObjectField.newObjectField().name(field.getName()).value(nodeValue).build());
+                fieldNodes.add(ObjectField.newObjectField().name(fieldName).value(nodeValue).build());
             }
         });
         return ObjectValue.newObjectValue().objectFields(fieldNodes).build();
     }
 
-    private static Value handleNumber(String stringValue) {
+    private static Value<?> handleNumber(String stringValue) {
         if (stringValue.matches("^[0-9]+$")) {
             return IntValue.newIntValue().value(new BigInteger(stringValue)).build();
         } else {
@@ -140,13 +133,15 @@ public class AstValueHelper {
         }
     }
 
-    private static Value handleList(Object _value, GraphQLList type) {
+    @SuppressWarnings("rawtypes")
+    private static Value<?> handleList(Object _value, GraphQLList type) {
         GraphQLType itemType = type.getWrappedType();
-        if (_value instanceof Iterable) {
-            Iterable iterable = (Iterable) _value;
+        boolean isIterable = _value instanceof Iterable;
+        if (isIterable || (_value != null && _value.getClass().isArray())) {
+            Iterable<?> iterable = isIterable ? (Iterable<?>) _value : FpKit.toCollection(_value);
             List<Value> valuesNodes = new ArrayList<>();
             for (Object item : iterable) {
-                Value itemNode = astFromValue(item, itemType);
+                Value<?> itemNode = astFromValue(item, itemType);
                 if (itemNode != null) {
                     valuesNodes.add(itemNode);
                 }
@@ -156,58 +151,16 @@ public class AstValueHelper {
         return astFromValue(_value, itemType);
     }
 
-    private static Value handleNonNull(Object _value, GraphQLNonNull type) {
+    private static Value<?> handleNonNull(Object _value, GraphQLNonNull type) {
         GraphQLType wrappedType = type.getWrappedType();
         return astFromValue(_value, wrappedType);
-    }
-
-    /**
-     * Encodes the value as a JSON string according to http://json.org/ rules
-     *
-     * @param stringValue the value to encode as a JSON string
-     *
-     * @return the encoded string
-     */
-    static String jsonStringify(String stringValue) {
-        StringBuilder sb = new StringBuilder();
-        for (char ch : stringValue.toCharArray()) {
-            switch (ch) {
-                case '"':
-                    sb.append("\\\"");
-                    break;
-                case '\\':
-                    sb.append("\\\\");
-                    break;
-                case '/':
-                    sb.append("\\/");
-                    break;
-                case '\b':
-                    sb.append("\\b");
-                    break;
-                case '\f':
-                    sb.append("\\f");
-                    break;
-                case '\n':
-                    sb.append("\\n");
-                    break;
-                case '\r':
-                    sb.append("\\r");
-                    break;
-                case '\t':
-                    sb.append("\\t");
-                    break;
-                default:
-                    sb.append(ch);
-            }
-        }
-        return sb.toString();
     }
 
     private static Object serialize(GraphQLType type, Object value) {
         if (type instanceof GraphQLScalarType) {
             return ((GraphQLScalarType) type).getCoercing().serialize(value);
         } else {
-            return ((GraphQLEnumType) type).getCoercing().serialize(value);
+            return ((GraphQLEnumType) type).serialize(value);
         }
     }
 
@@ -218,24 +171,6 @@ public class AstValueHelper {
         return serialized == null;
     }
 
-    private static Map objToMap(Object value) {
-        if (value instanceof Map) {
-            return (Map) value;
-        }
-        // java bean inspector
-        Map<String, Object> result = new HashMap<>();
-        try {
-            BeanInfo info = Introspector.getBeanInfo(value.getClass());
-            for (PropertyDescriptor pd : info.getPropertyDescriptors()) {
-                Method reader = pd.getReadMethod();
-                if (reader != null)
-                    result.put(pd.getName(), reader.invoke(value));
-            }
-        } catch (IntrospectionException | InvocationTargetException | IllegalAccessException e) {
-            throw new GraphQLException(e);
-        }
-        return result;
-    }
 
     /**
      * Parses an AST value literal into the correct {@link graphql.language.Value} which
@@ -243,12 +178,10 @@ public class AstValueHelper {
      * or '[ "array", "form" ]' otherwise an exception is thrown
      *
      * @param astLiteral the string to parse an AST literal
-     *
      * @return a valid Value
-     *
      * @throws graphql.AssertException if the input can be parsed
      */
-    public static Value valueFromAst(String astLiteral) {
+    public static Value<?> valueFromAst(String astLiteral) {
         // we use the parser to give us the AST elements as if we defined an inputType
         String toParse = "input X { x : String = " + astLiteral + "}";
         try {

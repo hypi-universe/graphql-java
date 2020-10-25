@@ -4,8 +4,9 @@ import graphql.util.TraversalControl
 import graphql.util.TraverserContext
 import spock.lang.Specification
 
-import static graphql.language.NodeTraverser.LeaveOrEnter.ENTER
-import static graphql.language.NodeTraverser.LeaveOrEnter.LEAVE
+import static graphql.util.TraverserContext.Phase.ENTER
+import static graphql.util.TraverserContext.Phase.LEAVE
+
 
 class NodeTraverserTest extends Specification {
 
@@ -34,6 +35,27 @@ class NodeTraverserTest extends Specification {
         1 * nodeVisitor.visitField(root, { isLeave(it) }) >> TraversalControl.CONTINUE
         then:
         0 * nodeVisitor._
+    }
+
+    def "traverse nodes returns accumulate"() {
+        given:
+        Field leaf = new Field("leaf")
+        SelectionSet rootSelectionSet = SelectionSet.newSelectionSet().selections(Arrays.asList(leaf)).build()
+        Field root = Field.newField().name("root").selectionSet(rootSelectionSet).build()
+
+        NodeTraverser nodeTraverser = new NodeTraverser()
+        NodeVisitor nodeVisitor = new NodeVisitorStub() {
+            @Override
+            TraversalControl visitField(Field node, TraverserContext<Node> context) {
+                context.setAccumulate("RESULT")
+                return TraversalControl.CONTINUE
+            }
+        }
+        when:
+        def result = nodeTraverser.depthFirst(nodeVisitor, root)
+
+        then:
+        result == "RESULT"
     }
 
     def "traverse nodes in pre-order"() {
@@ -115,7 +137,7 @@ class NodeTraverserTest extends Specification {
         def visitor = new NodeVisitorStub() {
             @Override
             TraversalControl visitField(Field node, TraverserContext<Node> context) {
-                context.setResult(node)
+                context.setAccumulate(node)
             }
         }
         def field = Field.newField().build()
@@ -127,10 +149,10 @@ class NodeTraverserTest extends Specification {
 
 
     boolean isEnter(TraverserContext context) {
-        return context.getVar(NodeTraverser.LeaveOrEnter.class) == ENTER
+        return context.phase == ENTER
     }
 
     boolean isLeave(TraverserContext context) {
-        return context.getVar(NodeTraverser.LeaveOrEnter.class) == LEAVE
+        return context.phase == LEAVE
     }
 }

@@ -4,21 +4,27 @@ import graphql.Internal;
 import graphql.PublicApi;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
 
 @PublicApi
 public class EnumTypeExtensionDefinition extends EnumTypeDefinition {
 
     @Internal
     protected EnumTypeExtensionDefinition(String name,
-                                        List<EnumValueDefinition> enumValueDefinitions,
-                                        List<Directive> directives,
-                                        Description description,
-                                        SourceLocation sourceLocation,
-                                        List<Comment> comments) {
+                                          List<EnumValueDefinition> enumValueDefinitions,
+                                          List<Directive> directives,
+                                          Description description,
+                                          SourceLocation sourceLocation,
+                                          List<Comment> comments,
+                                          IgnoredChars ignoredChars,
+                                          Map<String, String> additionalData) {
         super(name, enumValueDefinitions, directives, description,
-                sourceLocation, comments);
+                sourceLocation, comments, ignoredChars, additionalData);
     }
 
     @Override
@@ -28,7 +34,8 @@ public class EnumTypeExtensionDefinition extends EnumTypeDefinition {
                 deepCopy(getDirectives()),
                 getDescription(),
                 getSourceLocation(),
-                getComments());
+                getComments(),
+                getIgnoredChars(), getAdditionalData());
     }
 
     @Override
@@ -44,19 +51,29 @@ public class EnumTypeExtensionDefinition extends EnumTypeDefinition {
         return new Builder();
     }
 
+    @Override
+    public EnumTypeExtensionDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transformExtension(builder -> builder
+                .enumValueDefinitions(newChildren.getChildren(CHILD_ENUM_VALUE_DEFINITIONS))
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+        );
+    }
+
     public EnumTypeExtensionDefinition transformExtension(Consumer<Builder> builderConsumer) {
         Builder builder = new Builder(this);
         builderConsumer.accept(builder);
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private String name;
         private Description description;
         private List<EnumValueDefinition> enumValueDefinitions;
         private List<Directive> directives;
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -68,6 +85,8 @@ public class EnumTypeExtensionDefinition extends EnumTypeDefinition {
             this.description = existing.getDescription();
             this.directives = existing.getDirectives();
             this.enumValueDefinitions = existing.getEnumValueDefinitions();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -95,19 +114,36 @@ public class EnumTypeExtensionDefinition extends EnumTypeDefinition {
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public EnumTypeExtensionDefinition build() {
-            EnumTypeExtensionDefinition enumTypeDefinition = new EnumTypeExtensionDefinition(name,
+            return new EnumTypeExtensionDefinition(name,
                     enumValueDefinitions,
                     directives,
                     description,
                     sourceLocation,
-                    comments);
-            return enumTypeDefinition;
+                    comments,
+                    ignoredChars, additionalData);
         }
     }
 

@@ -1,24 +1,29 @@
 package graphql.schema
 
 import graphql.ExecutionInput
-import graphql.GraphQL
 import graphql.TestUtil
-import graphql.execution.ExecutionContext
 import graphql.schema.somepackage.ClassWithDFEMethods
+import graphql.schema.somepackage.ClassWithInterfaces
+import graphql.schema.somepackage.ClassWithInteritanceAndInterfaces
 import graphql.schema.somepackage.TestClass
 import graphql.schema.somepackage.TwoClassesDown
 import spock.lang.Specification
 
 import java.util.function.Function
 
-import static graphql.schema.DataFetchingEnvironmentBuilder.newDataFetchingEnvironment
+import static graphql.schema.DataFetchingEnvironmentImpl.newDataFetchingEnvironment
 
 @SuppressWarnings("GroovyUnusedDeclaration")
 class PropertyDataFetcherTest extends Specification {
 
+    void setup() {
+        PropertyDataFetcher.setUseSetAccessible(true)
+        PropertyDataFetcher.setUseNegativeCache(true)
+        PropertyDataFetcher.clearReflectionCache()
+    }
+
     def env(obj) {
         newDataFetchingEnvironment()
-                .executionContext(Mock(ExecutionContext))
                 .source(obj)
                 .arguments([argument1: "value1", argument2: "value2"])
                 .build()
@@ -81,6 +86,15 @@ class PropertyDataFetcherTest extends Specification {
         result == "privateValue"
     }
 
+    def "fetch via method that is private with setAccessible OFF"() {
+        PropertyDataFetcher.setUseSetAccessible(false)
+        def environment = env(new TestClass())
+        def fetcher = new PropertyDataFetcher("privateProperty")
+        def result = fetcher.get(environment)
+        expect:
+        result == null
+    }
+
     def "fetch via public method"() {
         def environment = env(new TestClass())
         def fetcher = new PropertyDataFetcher("publicProperty")
@@ -120,6 +134,15 @@ class PropertyDataFetcherTest extends Specification {
         def result = fetcher.get(environment)
         expect:
         result == "privateFieldValue"
+    }
+
+    def "fetch via private field when setAccessible OFF"() {
+        PropertyDataFetcher.setUseSetAccessible(false)
+        def environment = env(new TestClass())
+        def fetcher = new PropertyDataFetcher("privateField")
+        def result = fetcher.get(environment)
+        expect:
+        result == null
     }
 
     def "fetch when caching is in place has no bad effects"() {
@@ -246,6 +269,77 @@ class PropertyDataFetcherTest extends Specification {
         result = fetcher.get(environment)
         then:
         result == null
+
+    }
+
+    def "finds interface methods"() {
+        when:
+        def environment = env(new ClassWithInterfaces())
+        def fetcher = new PropertyDataFetcher("methodYouMustImplement")
+        def result = fetcher.get(environment)
+        then:
+        result == "methodYouMustImplement"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodYouMustAlsoImplement")
+        result = fetcher.get(environment)
+        then:
+        result == "methodYouMustAlsoImplement"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodThatIsADefault")
+        result = fetcher.get(environment)
+        then:
+        result == "methodThatIsADefault"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodThatIsAlsoADefault")
+        result = fetcher.get(environment)
+        then:
+        result == "methodThatIsAlsoADefault"
+
+    }
+
+    def "finds interface methods with inheritance"() {
+        def environment = env(new ClassWithInteritanceAndInterfaces.StartingClass())
+
+        when:
+        def fetcher = new PropertyDataFetcher("methodYouMustImplement")
+        def result = fetcher.get(environment)
+        then:
+        result == "methodYouMustImplement"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodThatIsADefault")
+        result = fetcher.get(environment)
+        then:
+        result == "methodThatIsADefault"
+
+        def environment2 = env(new ClassWithInteritanceAndInterfaces.InheritedClass())
+
+        when:
+        fetcher = new PropertyDataFetcher("methodYouMustImplement")
+        result = fetcher.get(environment2)
+        then:
+        result == "methodYouMustImplement"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodThatIsADefault")
+        result = fetcher.get(environment2)
+        then:
+        result == "methodThatIsADefault"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodYouMustAlsoImplement")
+        result = fetcher.get(environment2)
+        then:
+        result == "methodYouMustAlsoImplement"
+
+        when:
+        fetcher = new PropertyDataFetcher("methodThatIsAlsoADefault")
+        result = fetcher.get(environment2)
+        then:
+        result == "methodThatIsAlsoADefault"
     }
 
     def "ensure DFE is passed to method"() {
@@ -262,6 +356,35 @@ class PropertyDataFetcherTest extends Specification {
         result = fetcher.get(environment)
         then:
         result == "value2"
+    }
+
+    def "negative caching works as expected"() {
+        def environment = env(new ClassWithDFEMethods())
+        def fetcher = new PropertyDataFetcher("doesNotExist")
+        when:
+        def result = fetcher.get(environment)
+        then:
+        result == null
+
+        when:
+        result = fetcher.get(environment)
+        then:
+        result == null
+
+        when:
+        PropertyDataFetcher.setUseNegativeCache(false)
+        PropertyDataFetcher.clearReflectionCache()
+        result = fetcher.get(environment)
+        then:
+        result == null
+
+        when:
+        PropertyDataFetcher.setUseNegativeCache(true)
+        PropertyDataFetcher.clearReflectionCache()
+        result = fetcher.get(environment)
+        then:
+        result == null
+
     }
 
     class ProductDTO {
@@ -294,8 +417,7 @@ class PropertyDataFetcherTest extends Specification {
             }
         '''
 
-        def schema = TestUtil.schema(spec)
-        def graphQL = GraphQL.newGraphQL(schema).build()
+        def graphQL = TestUtil.graphQL(spec).build()
         def executionInput = ExecutionInput.newExecutionInput().query('''
             {
                 products(reverseNames : true) {
@@ -310,5 +432,38 @@ class PropertyDataFetcherTest extends Specification {
         then:
         er.errors.isEmpty()
         er.data == [products: [[name: "odarP", model: "GLX"], [name: "yrmaC", model: "Momento"]]]
+    }
+
+    interface Foo {
+        String getSomething();
+    }
+
+    private static class Bar implements Foo {
+        @Override
+        String getSomething() {
+            return "bar";
+        }
+    }
+
+    private static class Baz extends Bar implements Foo {}
+
+    def "search for private getter in class hierarchy"() {
+        given:
+        Bar bar = new Baz()
+        PropertyDataFetcher propertyDataFetcher = new PropertyDataFetcher("something")
+        def dfe = Mock(DataFetchingEnvironment)
+        dfe.getSource() >> bar
+        when:
+        def result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == "bar"
+
+        // repeat - should be cached
+        when:
+        result = propertyDataFetcher.get(dfe)
+
+        then:
+        result == "bar"
     }
 }

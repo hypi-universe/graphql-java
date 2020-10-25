@@ -7,8 +7,15 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static graphql.language.NodeUtil.assertNewChildrenAreEmpty;
 
 @PublicApi
 public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarValue<BooleanValue> {
@@ -16,19 +23,18 @@ public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarVa
     private final boolean value;
 
     @Internal
-    protected BooleanValue(boolean value, SourceLocation sourceLocation, List<Comment> comments) {
-        super(sourceLocation, comments);
+    protected BooleanValue(boolean value, SourceLocation sourceLocation, List<Comment> comments, IgnoredChars ignoredChars, Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData);
         this.value = value;
     }
 
     /**
      * alternative to using a Builder for convenience
      *
-     * @param value
+     * @param value of the Boolean
      */
     public BooleanValue(boolean value) {
-        super(null, new ArrayList<>());
-        this.value = value;
+        this(value, null, new ArrayList<>(), IgnoredChars.EMPTY, Collections.emptyMap());
     }
 
     public boolean isValue() {
@@ -41,9 +47,24 @@ public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarVa
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer().build();
+    }
+
+    @Override
+    public BooleanValue withNewChildren(NodeChildrenContainer newChildren) {
+        assertNewChildrenAreEmpty(newChildren);
+        return this;
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         BooleanValue that = (BooleanValue) o;
 
@@ -53,7 +74,7 @@ public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarVa
 
     @Override
     public BooleanValue deepCopy() {
-        return new BooleanValue(value, getSourceLocation(), getComments());
+        return new BooleanValue(value, getSourceLocation(), getComments(), getIgnoredChars(), getAdditionalData());
     }
 
     @Override
@@ -87,6 +108,8 @@ public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarVa
         private SourceLocation sourceLocation;
         private boolean value;
         private List<Comment> comments = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -95,6 +118,8 @@ public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarVa
             this.sourceLocation = existing.getSourceLocation();
             this.comments = existing.getComments();
             this.value = existing.isValue();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
 
@@ -113,9 +138,24 @@ public class BooleanValue extends AbstractNode<BooleanValue> implements ScalarVa
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public BooleanValue build() {
-            BooleanValue booleanValue = new BooleanValue(value, sourceLocation, comments);
-            return booleanValue;
+            return new BooleanValue(value, sourceLocation, comments, ignoredChars, additionalData);
         }
     }
 }

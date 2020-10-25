@@ -21,7 +21,11 @@ import graphql.validation.rules.OverlappingFieldsCanBeMerged;
 import graphql.validation.rules.PossibleFragmentSpreads;
 import graphql.validation.rules.ProvidedNonNullArguments;
 import graphql.validation.rules.ScalarLeafs;
+import graphql.validation.rules.UniqueArgumentNamesRule;
+import graphql.validation.rules.UniqueDirectiveNamesPerLocation;
+import graphql.validation.rules.UniqueFragmentNames;
 import graphql.validation.rules.UniqueOperationNames;
+import graphql.validation.rules.UniqueVariableNamesRule;
 import graphql.validation.rules.VariableDefaultValuesOfCorrectType;
 import graphql.validation.rules.VariableTypesMatchRule;
 import graphql.validation.rules.VariablesAreInputTypes;
@@ -44,7 +48,7 @@ public class Validator {
         return validationErrorCollector.getErrors();
     }
 
-    private List<AbstractRule> createRules(ValidationContext validationContext, ValidationErrorCollector validationErrorCollector) {
+    public List<AbstractRule> createRules(ValidationContext validationContext, ValidationErrorCollector validationErrorCollector) {
         List<AbstractRule> rules = new ArrayList<>();
 
         ExecutableDefinitions executableDefinitions = new ExecutableDefinitions(validationContext, validationErrorCollector);
@@ -99,6 +103,18 @@ public class Validator {
 
         UniqueOperationNames uniqueOperationNames = new UniqueOperationNames(validationContext, validationErrorCollector);
         rules.add(uniqueOperationNames);
+
+        UniqueFragmentNames uniqueFragmentNames = new UniqueFragmentNames(validationContext, validationErrorCollector);
+        rules.add(uniqueFragmentNames);
+
+        UniqueDirectiveNamesPerLocation uniqueDirectiveNamesPerLocation = new UniqueDirectiveNamesPerLocation(validationContext, validationErrorCollector);
+        rules.add(uniqueDirectiveNamesPerLocation);
+
+        UniqueArgumentNamesRule uniqueArgumentNamesRule = new UniqueArgumentNamesRule(validationContext, validationErrorCollector);
+        rules.add(uniqueArgumentNamesRule);
+
+        UniqueVariableNamesRule uniqueVariableNamesRule = new UniqueVariableNamesRule(validationContext, validationErrorCollector);
+        rules.add(uniqueVariableNamesRule);
 
         return rules;
     }

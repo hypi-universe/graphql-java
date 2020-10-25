@@ -1,5 +1,7 @@
 package graphql.execution;
 
+import graphql.Internal;
+import graphql.VisibleForTesting;
 import graphql.language.Directive;
 
 import java.util.List;
@@ -7,19 +9,17 @@ import java.util.Map;
 
 import static graphql.Directives.IncludeDirective;
 import static graphql.Directives.SkipDirective;
-import static graphql.language.NodeUtil.directivesByName;
+import static graphql.language.NodeUtil.directiveByName;
 
 
+@Internal
 public class ConditionalNodes {
 
-    private final ValuesResolver valuesResolver;
 
-    public ConditionalNodes() {
-        valuesResolver = new ValuesResolver();
-    }
+    @VisibleForTesting
+    ValuesResolver valuesResolver = new ValuesResolver();
 
-    public boolean
-    shouldInclude(Map<String, Object> variables, List<Directive> directives) {
+    public boolean shouldInclude(Map<String, Object> variables, List<Directive> directives) {
         boolean skip = getDirectiveResult(variables, directives, SkipDirective.getName(), false);
         boolean include = getDirectiveResult(variables, directives, IncludeDirective.getName(), true);
         return !skip && include;
@@ -29,7 +29,7 @@ public class ConditionalNodes {
         if (directives.isEmpty()) {
             return null;
         }
-        return directivesByName(directives).get(name);
+        return directiveByName(directives, name).orElse(null);
     }
 
     private boolean getDirectiveResult(Map<String, Object> variables, List<Directive> directives, String directiveName, boolean defaultValue) {

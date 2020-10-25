@@ -7,44 +7,58 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static java.util.Collections.emptyMap;
+
 @PublicApi
-public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> implements TypeDefinition<UnionTypeDefinition>, DirectivesContainer<UnionTypeDefinition> {
+public class UnionTypeDefinition extends AbstractDescribedNode<UnionTypeDefinition> implements TypeDefinition<UnionTypeDefinition>, DirectivesContainer<UnionTypeDefinition>, NamedNode<UnionTypeDefinition> {
 
     private final String name;
-    private final Description description;
     private final List<Directive> directives;
     private final List<Type> memberTypes;
 
+    public static final String CHILD_DIRECTIVES = "directives";
+    public static final String CHILD_MEMBER_TYPES = "memberTypes";
+
     @Internal
     protected UnionTypeDefinition(String name,
-                        List<Directive> directives,
-                        List<Type> memberTypes,
-                        Description description,
-                        SourceLocation sourceLocation,
-                        List<Comment> comments) {
-        super(sourceLocation, comments);
+                                  List<Directive> directives,
+                                  List<Type> memberTypes,
+                                  Description description,
+                                  SourceLocation sourceLocation,
+                                  List<Comment> comments,
+                                  IgnoredChars ignoredChars, Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData, description);
         this.name = name;
         this.directives = directives;
         this.memberTypes = memberTypes;
-        this.description = description;
     }
 
     /**
      * alternative to using a Builder for convenience
+     *
+     * @param name       of the union
+     * @param directives on the union
      */
     public UnionTypeDefinition(String name,
                                List<Directive> directives) {
-        this(name, directives, new ArrayList<>(), null, null, new ArrayList<>());
+        this(name, directives, new ArrayList<>(), null, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
     /**
      * alternative to using a Builder for convenience
+     *
+     * @param name of the union
      */
     public UnionTypeDefinition(String name) {
-        this(name, new ArrayList<>(), new ArrayList<>(), null, null, new ArrayList<>());
+        this(name, new ArrayList<>(), new ArrayList<>(), null, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
     @Override
@@ -61,10 +75,6 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
         return name;
     }
 
-    public Description getDescription() {
-        return description;
-    }
-
     @Override
     public List<Node> getChildren() {
         List<Node> result = new ArrayList<>();
@@ -74,13 +84,33 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .children(CHILD_DIRECTIVES, directives)
+                .children(CHILD_MEMBER_TYPES, memberTypes)
+                .build();
+    }
+
+    @Override
+    public UnionTypeDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+                .memberTypes(newChildren.getChildren(CHILD_MEMBER_TYPES))
+        );
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         UnionTypeDefinition that = (UnionTypeDefinition) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
@@ -90,8 +120,9 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
                 deepCopy(memberTypes),
                 description,
                 getSourceLocation(),
-                getComments()
-        );
+                getComments(),
+                getIgnoredChars(),
+                getAdditionalData());
     }
 
     @Override
@@ -118,13 +149,15 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private String name;
         private Description description;
         private List<Directive> directives = new ArrayList<>();
         private List<Type> memberTypes = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -136,6 +169,7 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
             this.description = existing.getDescription();
             this.directives = existing.getDirectives();
             this.memberTypes = existing.getMemberTypes();
+            this.ignoredChars = existing.getIgnoredChars();
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -158,6 +192,7 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
@@ -178,14 +213,31 @@ public class UnionTypeDefinition extends AbstractNode<UnionTypeDefinition> imple
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public UnionTypeDefinition build() {
-            UnionTypeDefinition unionTypeDefinition = new UnionTypeDefinition(name,
+            return new UnionTypeDefinition(name,
                     directives,
                     memberTypes,
                     description,
                     sourceLocation,
-                    comments);
-            return unionTypeDefinition;
+                    comments,
+                    ignoredChars,
+                    additionalData);
         }
     }
 }

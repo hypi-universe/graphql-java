@@ -317,6 +317,21 @@ class SchemaDiffTest extends Specification {
 
     }
 
+    def "changed nested input object field types"() {
+        DiffSet diffSet = diffSet("schema_changed_nested_input_object_fields.graphqls")
+
+        def diff = new SchemaDiff()
+        diff.diffSchema(diffSet, chainedReporter)
+
+        expect:
+        reporter.breakageCount == 1
+        reporter.breakages[0].category == DiffCategory.INVALID
+        reporter.breakages[0].typeName == 'NestedInput'
+        reporter.breakages[0].typeKind == TypeKind.InputObject
+        reporter.breakages[0].fieldName == 'nestedInput'
+
+    }
+
     def "changed input object field types"() {
         DiffSet diffSet = diffSet("schema_changed_input_object_fields.graphqls")
 
@@ -436,7 +451,7 @@ class SchemaDiffTest extends Specification {
 
     }
 
-    def "dangerous changes "() {
+    def "dangerous changes"() {
         DiffSet diffSet = diffSet("schema_dangerous_changes.graphqls")
 
         def diff = new SchemaDiff()
@@ -462,6 +477,38 @@ class SchemaDiffTest extends Specification {
         reporter.dangers[2].typeKind == TypeKind.Enum
         reporter.dangers[2].components.contains("Nonplussed")
 
+    }
+
+    def "field was deprecated"() {
+        DiffSet diffSet = diffSet("schema_deprecated_fields_new.graphqls")
+
+        def diff = new SchemaDiff()
+        diff.diffSchema(diffSet, chainedReporter)
+
+        expect:
+        reporter.dangerCount == 13
+        reporter.breakageCount == 0
+        reporter.dangers.every {
+            it.getCategory() == DiffCategory.DEPRECATION_ADDED
+        }
+
+    }
+
+    def "deprecated field was removed"() {
+        def schemaOld = TestUtil.schemaFile("diff/" + "schema_deprecated_fields_new.graphqls", wireWithNoFetching())
+        def schemaNew = TestUtil.schemaFile("diff/" + "schema_deprecated_fields_removed.graphqls", wireWithNoFetching())
+
+        DiffSet diffSet = DiffSet.diffSet(schemaOld, schemaNew)
+
+        def diff = new SchemaDiff()
+        diff.diffSchema(diffSet, chainedReporter)
+
+        expect:
+        reporter.dangerCount == 0
+        reporter.breakageCount == 11
+        reporter.breakages.every {
+            it.getCategory() == DiffCategory.DEPRECATION_REMOVED
+        }
     }
 
 }

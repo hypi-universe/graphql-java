@@ -7,10 +7,8 @@ import graphql.PublicApi;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationContext;
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionStrategyParameters;
-import graphql.language.Field;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -22,7 +20,7 @@ import java.util.concurrent.Future;
 /**
  *
  * <p>Deprecation Notice : This execution strategy does not support all of the graphql-java capabilities
- * such as data loader or @defer fields.  Since its so easy to create a data fetcher that uses
+ * such as data loader.  Since its so easy to create a data fetcher that uses
  * {@link java.util.concurrent.CompletableFuture#supplyAsync(java.util.function.Supplier, java.util.concurrent.Executor)}
  * to make field fetching happen off thread we recommend that you use that instead of this class.  This class
  * will be removed in a future version.
@@ -70,12 +68,12 @@ public class ExecutorServiceExecutionStrategy extends ExecutionStrategy {
         InstrumentationExecutionStrategyParameters instrumentationParameters = new InstrumentationExecutionStrategyParameters(executionContext, parameters);
         InstrumentationContext<ExecutionResult> executionStrategyCtx = instrumentation.beginExecutionStrategy(instrumentationParameters);
 
-        Map<String, List<Field>> fields = parameters.getFields();
+        MergedSelectionSet fields = parameters.getFields();
         Map<String, Future<CompletableFuture<ExecutionResult>>> futures = new LinkedHashMap<>();
         for (String fieldName : fields.keySet()) {
-            final List<Field> currentField = fields.get(fieldName);
+            final MergedField currentField = fields.getSubField(fieldName);
 
-            ExecutionPath fieldPath = parameters.getPath().segment(fieldName);
+            ResultPath fieldPath = parameters.getPath().segment(mkNameForPath(currentField));
             ExecutionStrategyParameters newParameters = parameters
                     .transform(builder -> builder.field(currentField).path(fieldPath));
 

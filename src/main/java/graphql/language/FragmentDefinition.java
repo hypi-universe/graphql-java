@@ -7,28 +7,40 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
 
 /**
  * Provided to the DataFetcher, therefore public API
  */
 @PublicApi
-public class FragmentDefinition extends AbstractNode<FragmentDefinition> implements Definition<FragmentDefinition>, SelectionSetContainer<FragmentDefinition>, DirectivesContainer<FragmentDefinition> {
+public class FragmentDefinition extends AbstractNode<FragmentDefinition> implements Definition<FragmentDefinition>, SelectionSetContainer<FragmentDefinition>, DirectivesContainer<FragmentDefinition>, NamedNode<FragmentDefinition> {
 
     private final String name;
     private final TypeName typeCondition;
     private final List<Directive> directives;
     private final SelectionSet selectionSet;
 
+    public static final String CHILD_TYPE_CONDITION = "typeCondition";
+    public static final String CHILD_DIRECTIVES = "directives";
+    public static final String CHILD_SELECTION_SET = "selectionSet";
+
     @Internal
     protected FragmentDefinition(String name,
-                               TypeName typeCondition,
-                               List<Directive> directives,
-                               SelectionSet selectionSet,
-                               SourceLocation sourceLocation,
-                               List<Comment> comments) {
-        super(sourceLocation, comments);
+                                 TypeName typeCondition,
+                                 List<Directive> directives,
+                                 SelectionSet selectionSet,
+                                 SourceLocation sourceLocation,
+                                 List<Comment> comments,
+                                 IgnoredChars ignoredChars,
+                                 Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData);
         this.name = name;
         this.typeCondition = typeCondition;
         this.directives = directives;
@@ -66,13 +78,35 @@ public class FragmentDefinition extends AbstractNode<FragmentDefinition> impleme
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .child(CHILD_TYPE_CONDITION, typeCondition)
+                .children(CHILD_DIRECTIVES, directives)
+                .child(CHILD_SELECTION_SET, selectionSet)
+                .build();
+    }
+
+    @Override
+    public FragmentDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder
+                .typeCondition(newChildren.getChildOrNull(CHILD_TYPE_CONDITION))
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+                .selectionSet(newChildren.getChildOrNull(CHILD_SELECTION_SET))
+        );
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         FragmentDefinition that = (FragmentDefinition) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
@@ -82,8 +116,9 @@ public class FragmentDefinition extends AbstractNode<FragmentDefinition> impleme
                 deepCopy(directives),
                 deepCopy(selectionSet),
                 getSourceLocation(),
-                getComments()
-        );
+                getComments(),
+                getIgnoredChars(),
+                getAdditionalData());
     }
 
     @Override
@@ -111,13 +146,15 @@ public class FragmentDefinition extends AbstractNode<FragmentDefinition> impleme
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private String name;
         private TypeName typeCondition;
         private List<Directive> directives = new ArrayList<>();
         private SelectionSet selectionSet;
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -129,6 +166,8 @@ public class FragmentDefinition extends AbstractNode<FragmentDefinition> impleme
             this.typeCondition = existing.getTypeCondition();
             this.directives = existing.getDirectives();
             this.selectionSet = existing.getSelectionSet();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
 
@@ -152,6 +191,7 @@ public class FragmentDefinition extends AbstractNode<FragmentDefinition> impleme
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
@@ -162,9 +202,24 @@ public class FragmentDefinition extends AbstractNode<FragmentDefinition> impleme
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public FragmentDefinition build() {
-            FragmentDefinition fragmentDefinition = new FragmentDefinition(name, typeCondition, directives, selectionSet, sourceLocation, comments);
-            return fragmentDefinition;
+            return new FragmentDefinition(name, typeCondition, directives, selectionSet, sourceLocation, comments, ignoredChars, additionalData);
         }
     }
 }

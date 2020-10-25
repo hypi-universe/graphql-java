@@ -95,15 +95,12 @@ scalar DateTime
         //
         // notice how it tightens everything up
         //
-        output == """# objects can have comments
-# over a number of lines
-schema {
+        output == """schema {
   query: QueryType
   mutation: Mutation
 }
 
 type QueryType {
-  # the hero of the film
   hero(episode: Episode): Character
   human(id: String): Human
   droid(id: ID!): Droid
@@ -169,9 +166,7 @@ scalar DateTime
         String output = printAst(document.getDefinitions().get(0))
 
         expect:
-        output == """# objects can have comments
-# over a number of lines
-schema {
+        output == """schema {
   query: QueryType
   mutation: Mutation
 }"""
@@ -183,7 +178,6 @@ schema {
 
         expect:
         output == """type QueryType {
-  # the hero of the film
   hero(episode: Episode): Character
   human(id: String): Human
   droid(id: ID!): Droid
@@ -452,13 +446,7 @@ type Query {
 
         expect:
         output == '''type Query {
-  field(
-  #description1
-  arg1: String
-  arg2: String
-  #description3
-  arg3: String
-  ): String
+  field(arg1: String, arg2: String, arg3: String): String
 }
 '''
 
@@ -466,6 +454,10 @@ type Query {
 
     def "print type extensions"() {
         def query = '''
+    extend schema {
+        query: Query
+    }
+    
     extend type Object @directive {
         objectField : String
     }    
@@ -491,7 +483,11 @@ type Query {
         String output = printAst(document)
 
         expect:
-        output == '''extend type Object @directive {
+        output == '''extend schema {
+  query: Query
+}
+
+extend type Object @directive {
   objectField: String
 }
 
@@ -516,12 +512,104 @@ extend input Input @directive {
     }
 
     def "compact ast printing"() {
-        def query = "{foo {hello} world}"
+        def query = '''
+    { 
+        #comments go away
+        aliasOfFoo : foo(arg1 : "val1", args2 : "val2") @isCached { #   and this comment as well
+            hello
+        } 
+        world @neverCache @okThenCache
+    }
+    
+    fragment FX on SomeType {
+        aliased : field(withArgs : "argVal", andMoreArgs : "andMoreVals")
+    }
+'''
         def document = parse(query)
         String output = AstPrinter.printAstCompact(document)
 
         expect:
-        output == "query { foo { hello } world }"
+        output == '''query {aliasOfFoo:foo(arg1:"val1",args2:"val2") @isCached {hello} world @neverCache @okThenCache} fragment FX on SomeType {aliased:field(withArgs:"argVal",andMoreArgs:"andMoreVals")}'''
+    }
+
+    def "print ast with inline fragment without type condition"() {
+        def query = '''
+    { 
+        foo {
+            ... {
+                hello
+            }
+        }
+    }
+'''
+        def document = parse(query)
+        String outputCompact = AstPrinter.printAstCompact(document)
+        String outputFull = AstPrinter.printAst(document)
+
+        expect:
+        outputCompact == '''query {foo {... {hello}}}'''
+        outputFull == '''query {
+  foo {
+    ... {
+      hello
+    }
+  }
+}
+'''
+    }
+
+    def 'StringValue is converted to valid Strings'() {
+
+        AstPrinter astPrinter = new AstPrinter(true)
+
+        when:
+        def result = astPrinter.value(new StringValue(strValue))
+
+        then:
+        result == expected
+
+        where:
+        strValue            | expected
+        'VALUE'             | '"VALUE"'
+        'VA\n\t\f\n\b\\LUE' | '"VA\\n\\t\\f\\n\\b\\\\LUE"'
+        'VA\\L"UE'          | '"VA\\\\L\\"UE"'
+    }
+
+    def 'Interfaces implementing interfaces'() {
+        given:
+        AstPrinter astPrinter = new AstPrinter(true)
+        def interfaceType = InterfaceTypeDefinition
+                .newInterfaceTypeDefinition()
+                .name("Resource")
+                .implementz(new TypeName("Node"))
+                .implementz(new TypeName("Extra"))
+                .build()
+
+
+        when:
+        def result = astPrinter.printAst(interfaceType)
+
+        then:
+        result == "interface Resource implements Node & Extra {}"
+
+    }
+
+    def 'Interfaces implementing interfaces in extension'() {
+        given:
+        AstPrinter astPrinter = new AstPrinter(true)
+        def interfaceType = InterfaceTypeExtensionDefinition
+                .newInterfaceTypeExtensionDefinition()
+                .name("Resource")
+                .implementz(new TypeName("Node"))
+                .implementz(new TypeName("Extra"))
+                .build()
+
+        when:
+        def result = astPrinter.printAst(interfaceType)
+
+        then:
+        result == "extend interface Resource implements Node & Extra {}"
+
     }
 
 }

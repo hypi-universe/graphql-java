@@ -35,11 +35,11 @@ class UnionTest extends Specification {
                 fields       : [
                         [name: 'name']
                 ],
-                interfaces   : null,
+                interfaces   : [],
                 possibleTypes: [
                         [name: 'Cat'],
+                        [name: 'Dog'],
                         [name: 'Person'],
-                        [name: 'Dog']
                 ],
                 enumValues   : null,
                 inputFields  : null

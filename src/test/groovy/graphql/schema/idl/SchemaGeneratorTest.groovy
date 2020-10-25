@@ -1,8 +1,9 @@
 package graphql.schema.idl
 
-import graphql.AssertException
+
 import graphql.TestUtil
 import graphql.introspection.Introspection
+import graphql.schema.GraphQLArgument
 import graphql.schema.GraphQLDirective
 import graphql.schema.GraphQLDirectiveContainer
 import graphql.schema.GraphQLEnumType
@@ -13,15 +14,18 @@ import graphql.schema.GraphQLInterfaceType
 import graphql.schema.GraphQLList
 import graphql.schema.GraphQLNonNull
 import graphql.schema.GraphQLObjectType
+import graphql.schema.GraphQLScalarType
 import graphql.schema.GraphQLSchema
 import graphql.schema.GraphQLType
+import graphql.schema.GraphQLTypeUtil
 import graphql.schema.GraphQLUnionType
+import graphql.schema.GraphqlTypeComparatorRegistry
 import graphql.schema.PropertyDataFetcher
 import graphql.schema.idl.errors.NotAnInputTypeError
 import graphql.schema.idl.errors.NotAnOutputTypeError
+import graphql.schema.idl.errors.SchemaProblem
 import graphql.schema.visibility.GraphqlFieldVisibility
 import spock.lang.Specification
-import spock.lang.Unroll
 
 import java.util.function.UnaryOperator
 
@@ -29,10 +33,27 @@ import static graphql.Scalars.GraphQLBoolean
 import static graphql.Scalars.GraphQLFloat
 import static graphql.Scalars.GraphQLInt
 import static graphql.Scalars.GraphQLString
-import static graphql.TestUtil.schema
-import static graphql.schema.GraphQLList.list
+import static graphql.schema.idl.SchemaGenerator.Options.defaultOptions
 
 class SchemaGeneratorTest extends Specification {
+
+    def newRuntimeWiring() {
+        return RuntimeWiring.newRuntimeWiring()
+                .comparatorRegistry(GraphqlTypeComparatorRegistry.BY_NAME_REGISTRY)
+    }
+
+    GraphQLSchema schema(String sdl) {
+        def runtimeWiringAsIs = newRuntimeWiring()
+                .comparatorRegistry(GraphqlTypeComparatorRegistry.BY_NAME_REGISTRY)
+                .wiringFactory(TestUtil.mockWiringFactory)
+                .build()
+        return schema(sdl, runtimeWiringAsIs)
+    }
+
+    GraphQLSchema schema(String sdl, RuntimeWiring runtimeWiring) {
+        return TestUtil.schema(sdl, runtimeWiring)
+    }
+
 
     GraphQLType unwrap1Layer(GraphQLType type) {
         if (type instanceof GraphQLNonNull) {
@@ -140,7 +161,6 @@ class SchemaGeneratorTest extends Specification {
         assert queryType.description == " the schema allows the following query\n to be made"
 
     }
-
 
     def "test simple schema generate"() {
 
@@ -301,8 +321,8 @@ class SchemaGeneratorTest extends Specification {
         types.size() == 2
         types[0] instanceof GraphQLObjectType
         types[1] instanceof GraphQLObjectType
-        types[0].name == "Foo"
-        types[1].name == "Bar"
+        types[0].name == "Bar"
+        types[1].name == "Foo"
 
     }
 
@@ -338,8 +358,8 @@ class SchemaGeneratorTest extends Specification {
         types.size() == 2
         types[0] instanceof GraphQLObjectType
         types[1] instanceof GraphQLObjectType
-        types[0].name == "Foo"
-        types[1].name == "Bar"
+        types[0].name == "Bar"
+        types[1].name == "Foo"
 
     }
 
@@ -374,8 +394,8 @@ class SchemaGeneratorTest extends Specification {
         types.size() == 2
         types[0] instanceof GraphQLObjectType
         types[1] instanceof GraphQLObjectType
-        types[0].name == "Foo"
-        types[1].name == "Bar"
+        types[0].name == "Bar"
+        types[1].name == "Foo"
 
     }
 
@@ -413,8 +433,8 @@ class SchemaGeneratorTest extends Specification {
         types.size() == 2
         types[0] instanceof GraphQLObjectType
         types[1] instanceof GraphQLObjectType
-        types[0].name == "Foo"
-        types[1].name == "Bar"
+        types[0].name == "Bar"
+        types[1].name == "Foo"
 
     }
 
@@ -447,9 +467,9 @@ class SchemaGeneratorTest extends Specification {
         enumType.getName() == "RGB"
         enumType.getDefinition().getName() == "RGB"
 
-        enumType.values.get(0).getValue() == "RED"
+        enumType.values.get(0).getValue() == "BLUE"
         enumType.values.get(1).getValue() == "GREEN"
-        enumType.values.get(2).getValue() == "BLUE"
+        enumType.values.get(2).getValue() == "RED"
 
     }
 
@@ -482,9 +502,9 @@ class SchemaGeneratorTest extends Specification {
         interfaceType.name == "Foo"
         interfaceType.getDefinition().getName() == "Foo"
 
-        schema.queryType.fieldDefinitions[0].name == "is_foo"
+        schema.queryType.fieldDefinitions[0].name == "is_bar"
         schema.queryType.fieldDefinitions[0].type.name == "Boolean"
-        schema.queryType.fieldDefinitions[1].name == "is_bar"
+        schema.queryType.fieldDefinitions[1].name == "is_foo"
         schema.queryType.fieldDefinitions[1].type.name == "Boolean"
 
     }
@@ -511,11 +531,9 @@ class SchemaGeneratorTest extends Specification {
                extraField1 : String
             }
             extend type BaseType implements Interface2 {
-               extraField1 : String
                extraField2 : Int
             }
             extend type BaseType implements Interface3 {
-               extraField1 : String
                extraField3 : ID
             }
             extend type BaseType {
@@ -523,13 +541,6 @@ class SchemaGeneratorTest extends Specification {
             }
             extend type BaseType {
                extraField5 : Boolean!
-            }
-            #
-            # if we repeat a definition, that's ok as long as its the same types as before
-            # they will be de-duped since the effect is the same
-            #
-            extend type BaseType implements Interface1 {
-               extraField1 : String
             }
             
             schema {
@@ -591,7 +602,6 @@ class SchemaGeneratorTest extends Specification {
                 name: String!
             }
             extend type Human implements Character {
-                name: String!
                 friends: [Character]
             }
             extend type Human {
@@ -607,11 +617,11 @@ class SchemaGeneratorTest extends Specification {
         GraphQLObjectType type = schema.getQueryType()
 
         type.name == "Human"
-        type.fieldDefinitions[0].name == "id"
-        type.fieldDefinitions[1].name == "name"
-        type.fieldDefinitions[2].name == "friends"
-        type.fieldDefinitions[3].name == "appearsIn"
-        type.fieldDefinitions[4].name == "homePlanet"
+        type.fieldDefinitions[0].name == "appearsIn"
+        type.fieldDefinitions[1].name == "friends"
+        type.fieldDefinitions[2].name == "homePlanet"
+        type.fieldDefinitions[3].name == "id"
+        type.fieldDefinitions[4].name == "name"
 
         type.interfaces.size() == 1
         type.interfaces[0].name == "Character"
@@ -864,7 +874,7 @@ class SchemaGeneratorTest extends Specification {
         def enumValuesProvider = new NaturalEnumValuesProvider<ExampleEnum>(ExampleEnum.class)
         when:
 
-        def wiring = RuntimeWiring.newRuntimeWiring()
+        def wiring = newRuntimeWiring()
                 .type("Enum", { TypeRuntimeWiring.Builder it -> it.enumValues(enumValuesProvider) } as UnaryOperator)
                 .build()
         def schema = schema(spec, wiring)
@@ -874,6 +884,33 @@ class SchemaGeneratorTest extends Specification {
         enumType.getValue("A").value == ExampleEnum.A
         enumType.getValue("B").value == ExampleEnum.B
         enumType.getValue("C").value == ExampleEnum.C
+    }
+
+    def " MapEnum values provider"() {
+        given:
+        def spec = '''
+            enum Enum{
+                A
+                B
+                C
+            }
+            
+            type Query{
+                field: Enum
+            }
+        '''
+
+        when:
+        def mapEnumProvider = new MapEnumValuesProvider([A: 11, B: 12, C: 13])
+        def enumTypeWiring = TypeRuntimeWiring.newTypeWiring("Enum").enumValues(mapEnumProvider).build()
+        def wiring = RuntimeWiring.newRuntimeWiring().type(enumTypeWiring).build()
+        def schema = TestUtil.schema(spec, wiring)
+        GraphQLEnumType graphQLEnumType = schema.getType("Enum") as GraphQLEnumType
+
+        then:
+        graphQLEnumType.getValue("A").value == 11
+        graphQLEnumType.getValue("B").value == 12
+        graphQLEnumType.getValue("C").value == 13
     }
 
     def "enum with no values provider: value is the name"() {
@@ -903,61 +940,6 @@ class SchemaGeneratorTest extends Specification {
 
     }
 
-    @Unroll
-    def "when using implicit directive (w/o definition), #argumentName is supported"() {
-        setup:
-        def spec = """
-            type Query @myDirective($argumentName: $argumentValue) {
-                foo: String 
-            }
-        """
-        when:
-        def wiring = RuntimeWiring.newRuntimeWiring()
-                .build()
-
-        def schema = schema(spec, wiring)
-        def queryType = schema.queryType
-
-        then:
-        def directive = queryType.getDirective("myDirective")
-        directive.getArgument(argumentName).type == expectedArgumentType
-
-        where:
-        argumentName        | argumentValue     || expectedArgumentType
-        "stringArg"         | '"a string"'      || GraphQLString
-        "boolArg"           | "true"            || GraphQLBoolean
-        "floatArg"          | "4.5"             || GraphQLFloat
-        "intArg"            | "5"               || GraphQLInt
-        "nullArg"           | "null"            || GraphQLString
-        "emptyArrayArg"     | "[]"              || list(GraphQLString)
-        "arrayNullsArg"     | "[null, null]"    || list(GraphQLString)
-        "arrayArg"          | "[3,4,6]"         || list(GraphQLInt)
-        "arrayWithNullsArg" | "[null,3,null,6]" || list(GraphQLInt)
-    }
-
-    @Unroll
-    def "when using implicit directive (w/o definition), #argumentName is NOT supported"() {
-        setup:
-        def spec = """
-            type Query @myDirective($argumentName: $argumentValue) {
-                foo: String 
-            }
-        """
-        when:
-        def wiring = RuntimeWiring.newRuntimeWiring()
-                .build()
-        schema(spec, wiring)
-
-        then:
-        def ex = thrown(AssertException)
-        ex.message == expectedErrorMessage
-
-        where:
-        argumentName          | argumentValue               || expectedErrorMessage
-        "objArg"              | '{ hi: "John"}'             || "Internal error: should never happen: Directive values of type 'ObjectValue' are not supported yet"
-        "enumArg"             | "MONDAY"                    || "Internal error: should never happen: Directive values of type 'EnumValue' are not supported yet"
-        "polymorphicArrayArg" | '["one", { hi: "John"}, 5]' || "Arrays containing multiple types of values are not supported yet. Detected the following types [IntValue,ObjectValue,StringValue]"
-    }
 
     def "deprecated directive is supported"() {
         given:
@@ -977,10 +959,7 @@ class SchemaGeneratorTest extends Specification {
         }
         """
         when:
-        def wiring = RuntimeWiring.newRuntimeWiring()
-                .build()
-
-        def schema = schema(spec, wiring)
+        def schema = schema(spec)
         GraphQLEnumType enumType = schema.getType("Enum") as GraphQLEnumType
         GraphQLObjectType queryType = schema.getType("Query") as GraphQLObjectType
 
@@ -992,6 +971,75 @@ class SchemaGeneratorTest extends Specification {
         queryType.getFieldDefinition("foo").getDeprecationReason() == "foo reason"
         queryType.getFieldDefinition("bar").getDeprecationReason() == "No longer supported" // default according to spec
         !queryType.getFieldDefinition("baz").isDeprecated()
+    }
+
+    def "specifiedBy directive is supported"() {
+        given:
+        def spec = """
+        type Query {
+            foo: MyScalar
+        }
+        scalar MyScalar @specifiedBy(url: "myUrl.example")
+        """
+        when:
+        def schema = schema(spec)
+        GraphQLScalarType scalar = schema.getType("MyScalar") as GraphQLScalarType
+
+        then:
+        scalar.getSpecifiedByUrl() == "myUrl.example"
+    }
+
+    def "specifiedBy requires an url "() {
+        given:
+        def spec = """
+        type Query {
+            foo: MyScalar
+        }
+        scalar MyScalar @specifiedBy
+        """
+        when:
+        def registry = new SchemaParser().parse(spec)
+        new SchemaGenerator().makeExecutableSchema(defaultOptions(), registry, TestUtil.mockRuntimeWiring)
+
+        then:
+        def schemaProblem = thrown(SchemaProblem)
+        schemaProblem.message.contains("failed to provide a value for the non null argument 'url' on directive 'specifiedBy'")
+    }
+
+    def "specifiedBy can be added via extension"() {
+        given:
+        def spec = """
+        type Query {
+            foo: MyScalar
+        }
+        scalar MyScalar
+        extend scalar MyScalar @specifiedBy(url: "myUrl.example")
+        """
+        when:
+        def schema = schema(spec)
+        GraphQLScalarType scalar = schema.getType("MyScalar") as GraphQLScalarType
+
+        then:
+        scalar.getSpecifiedByUrl() == "myUrl.example"
+    }
+
+    def "specifiedBy is only allowed once per scalar"() {
+        given:
+        def spec = """
+        type Query {
+            foo: MyScalar
+        }
+        scalar MyScalar @specifiedBy(url: "myUrl.example")
+        extend scalar MyScalar @specifiedBy(url: "myUrl.example")
+        """
+        when:
+        def registry = new SchemaParser().parse(spec)
+        new SchemaGenerator().makeExecutableSchema(defaultOptions(), registry, TestUtil.mockRuntimeWiring)
+
+        then:
+        def schemaProblem = thrown(SchemaProblem)
+        schemaProblem.message.contains("has redefined the directive called 'specifiedBy")
+
     }
 
 
@@ -1136,6 +1184,13 @@ class SchemaGeneratorTest extends Specification {
 
     def "object type directives are gathered and turned into runtime objects with arguments"() {
         def spec = """
+            directive @directive1 on OBJECT
+            directive @fieldDirective1 on FIELD_DEFINITION
+            directive @directive2 on OBJECT
+            directive @directive3 on OBJECT
+            directive @directiveWithArgs(strArg: String, intArg: Int, boolArg: Boolean, floatArg: Float,nullArg: String) on OBJECT
+            directive @fieldDirective2 on FIELD_DEFINITION
+            
             type Query @directive1 {
               field1 : String @fieldDirective1
             }
@@ -1183,13 +1238,14 @@ class SchemaGeneratorTest extends Specification {
         directive.arguments[argIndex].type == argType
         directive.arguments[argIndex].value == argValue
 
+        // arguments are sorted
         where:
         argIndex | argName    | argType        | argValue
-        0        | "strArg"   | GraphQLString  | "String"
-        1        | "intArg"   | GraphQLInt     | 1
-        2        | "boolArg"  | GraphQLBoolean | true
-        3        | "floatArg" | GraphQLFloat   | 1.1
-        4        | "nullArg"  | GraphQLString  | null
+        0        | "boolArg"  | GraphQLBoolean | true
+        1        | "floatArg" | GraphQLFloat   | 1.1
+        2        | "intArg"   | GraphQLInt     | 1
+        3        | "nullArg"  | GraphQLString  | null
+        4        | "strArg"   | GraphQLString  | "String"
 
     }
 
@@ -1204,18 +1260,21 @@ class SchemaGeneratorTest extends Specification {
             type B  {
                 fieldB : String
             }
-            
+            directive @IFaceDirective on INTERFACE
             interface IFace @IFaceDirective {
                 field1 : String
             }
-            
+            directive @OnionDirective on UNION 
             union Onion @OnionDirective = A | B
             
+            directive @EnumValueDirective on ENUM_VALUE
+            directive @NumbDirective on ENUM 
             enum Numb @NumbDirective {
                 X @EnumValueDirective,
                 Y
             }
-            
+            directive @PuterDirective on INPUT_OBJECT
+            directive @InputFieldDirective on INPUT_FIELD_DEFINITION
             input Puter @PuterDirective {
                 inputField : String @InputFieldDirective
             }
@@ -1289,7 +1348,7 @@ class SchemaGeneratorTest extends Specification {
 
         expect:
 
-        schema.getFieldVisibility() == fieldVisibility
+        schema.getCodeRegistry().getFieldVisibility() == fieldVisibility
 
     }
 
@@ -1333,10 +1392,12 @@ class SchemaGeneratorTest extends Specification {
             }
             
             
+            directive @directive on INTERFACE 
             interface IAgeAndHeight @directive {
                 age : Int
             }
 
+            directive @directiveField on FIELD_DEFINITION 
             extend interface IAgeAndHeight {
                 height : Int @directiveField
             }
@@ -1377,7 +1438,7 @@ class SchemaGeneratorTest extends Specification {
             union FooBar = Foo
             
             extend union FooBar = Bar | Baz
-            
+            directive @directive on UNION 
             extend union FooBar @directive
             
         """
@@ -1407,7 +1468,7 @@ class SchemaGeneratorTest extends Specification {
             extend enum Numb {
                 C
             }
-
+            directive @directive on ENUM
             extend enum Numb @directive{
                 D
             }
@@ -1444,6 +1505,7 @@ class SchemaGeneratorTest extends Specification {
                 fieldC : String
             }
 
+            directive @directive on INPUT_OBJECT
             extend input Puter @directive {
                 fieldD : String
             }
@@ -1467,7 +1529,10 @@ class SchemaGeneratorTest extends Specification {
             type Query {
                 obj : Object
             }
-            
+            directive @strDirective on ARGUMENT_DEFINITION    
+            directive @secondDirective on ARGUMENT_DEFINITION    
+            directive @intDirective(inception: Boolean) on ARGUMENT_DEFINITION    
+            directive @thirdDirective on ARGUMENT_DEFINITION    
             type Object {
                 field(argStr : String @strDirective @secondDirective, argInt : Int @intDirective(inception : true) @thirdDirective ) : String
             }
@@ -1512,12 +1577,7 @@ class SchemaGeneratorTest extends Specification {
         """
 
         when:
-        def options = SchemaGenerator.Options.defaultOptions().enforceSchemaDirectives(true)
-
-        then:
-        options.isEnforceSchemaDirectives()
-
-        when:
+        def options = defaultOptions()
         def registry = new SchemaParser().parse(spec)
         def schema = new SchemaGenerator().makeExecutableSchema(options, registry, TestUtil.mockRuntimeWiring)
 
@@ -1554,18 +1614,18 @@ class SchemaGeneratorTest extends Specification {
         """
 
         when:
-        def options = SchemaGenerator.Options.defaultOptions().enforceSchemaDirectives(true)
+        def options = defaultOptions()
 
         def registry = new SchemaParser().parse(spec)
         def schema = new SchemaGenerator().makeExecutableSchema(options, registry, TestUtil.mockRuntimeWiring)
 
         then:
         def directiveTest1 = schema.getDirective("test1")
-        directiveTest1.getArgument("include").type == GraphQLNonNull.nonNull(GraphQLBoolean)
+        GraphQLNonNull.nonNull(GraphQLBoolean).isEqualTo(directiveTest1.getArgument("include").type)
         directiveTest1.getArgument("include").value == null
 
         def directiveTest2 = schema.getDirective("test2")
-        directiveTest2.getArgument("include").type == GraphQLNonNull.nonNull(GraphQLBoolean)
+        GraphQLNonNull.nonNull(GraphQLBoolean).isEqualTo(directiveTest2.getArgument("include").type)
         directiveTest2.getArgument("include").value == true
         directiveTest2.getArgument("include").defaultValue == true
 
@@ -1586,12 +1646,7 @@ class SchemaGeneratorTest extends Specification {
         """
 
         when:
-        def options = SchemaGenerator.Options.defaultOptions().enforceSchemaDirectives(true)
-
-        then:
-        options.isEnforceSchemaDirectives()
-
-        when:
+        def options = defaultOptions()
         def registry = new SchemaParser().parse(spec)
         def schema = new SchemaGenerator().makeExecutableSchema(options, registry, TestUtil.mockRuntimeWiring)
 
@@ -1619,7 +1674,7 @@ class SchemaGeneratorTest extends Specification {
             }
         """
 
-        def options = SchemaGenerator.Options.defaultOptions().enforceSchemaDirectives(true)
+        def options = defaultOptions()
 
         when:
         def registry = new SchemaParser().parse(spec)
@@ -1668,7 +1723,7 @@ class SchemaGeneratorTest extends Specification {
         GraphQLObjectType type = schema.getType("Query") as GraphQLObjectType
 
         expect:
-        def fetcher = type.getFieldDefinition("homePlanet").getDataFetcher()
+        def fetcher = schema.getCodeRegistry().getDataFetcher(type, type.getFieldDefinition("homePlanet"))
         fetcher instanceof PropertyDataFetcher
 
         PropertyDataFetcher propertyDataFetcher = fetcher as PropertyDataFetcher
@@ -1676,7 +1731,7 @@ class SchemaGeneratorTest extends Specification {
         //
         // no directive - plain name
         //
-        def fetcher2 = type.getFieldDefinition("name").getDataFetcher()
+        def fetcher2 = schema.getCodeRegistry().getDataFetcher(type, type.getFieldDefinition("name"))
         fetcher2 instanceof PropertyDataFetcher
 
         PropertyDataFetcher propertyDataFetcher2 = fetcher2 as PropertyDataFetcher
@@ -1685,7 +1740,7 @@ class SchemaGeneratorTest extends Specification {
 
 
     def "does not break for circular references to interfaces"() {
-      def spec = """
+        def spec = """
           interface MyInterface {
               interfaceField: MyNonImplementingType
           }
@@ -1702,15 +1757,403 @@ class SchemaGeneratorTest extends Specification {
               hello: String
           }
       """
-      
-      def types = new SchemaParser().parse(spec)
-      def wiring = RuntimeWiring.newRuntimeWiring()
-        .type("Query", { typeWiring -> typeWiring.dataFetcher("hello", { env -> "Hello, world" }) })
-        .type("MyInterface", { typeWiring -> typeWiring.typeResolver({ env -> null}) })
-        .build();
-      GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(types, wiring);
-      expect:
-       assert schema != null
+
+        def types = new SchemaParser().parse(spec)
+        def wiring = RuntimeWiring.newRuntimeWiring()
+                .type("Query", { typeWiring -> typeWiring.dataFetcher("hello", { env -> "Hello, world" }) })
+                .type("MyInterface", { typeWiring -> typeWiring.typeResolver({ env -> null }) })
+                .build()
+        GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(types, wiring)
+        expect:
+        assert schema != null
+    }
+
+    def "transformers get called once the schema is built"() {
+        def spec = """
+          type Query {
+              hello: String
+          }
+      """
+
+        def types = new SchemaParser().parse(spec)
+
+        def extraDirective = (GraphQLDirective.newDirective()).name("extra")
+                .argument(GraphQLArgument.newArgument().name("value").type(GraphQLString)).build()
+        def transformer = new SchemaGeneratorPostProcessing() {
+            @Override
+            GraphQLSchema process(GraphQLSchema originalSchema) {
+                originalSchema.transform({ builder -> builder.additionalDirective(extraDirective) })
+            }
+        }
+        def wiring = RuntimeWiring.newRuntimeWiring()
+                .transformer(transformer)
+                .build()
+        GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(types, wiring)
+        expect:
+        assert schema != null
+        schema.getDirective("extra") != null
+    }
+
+    def "1509- enum object string default values are handled"() {
+        def spec = '''
+            enum EnumValue {
+                ONE, TWO, THREE
+            }
+            
+            input InputType {
+                value : EnumValue
+            }
+            
+            type Query {
+                fieldWithEnum(arg : InputType = { value : ONE } ) : String
+                fieldWithString(arg : InputType = { value : "ONE" } ) : String
+            }
+        '''
+        def types = new SchemaParser().parse(spec)
+        GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(types, TestUtil.mockRuntimeWiring)
+        expect:
+        assert schema != null
+        def queryType = schema.getObjectType("Query")
+        def fieldWithEnum = queryType.getFieldDefinition("fieldWithEnum")
+        def arg = fieldWithEnum.getArgument("arg")
+        arg.defaultValue == [value: "ONE"]
+
+        def fieldWithString = queryType.getFieldDefinition("fieldWithString")
+        def arg2 = fieldWithString.getArgument("arg")
+        arg2.defaultValue == [value: "ONE"]
+    }
+
+    def "extensions are captured into runtime objects"() {
+        def sdl = '''
+            directive @directive1 on SCALAR
+            ######## Objects
+             
+            type Query {
+                foo : String
+            }
+            
+            extend type Query {
+                bar : String
+            }
+
+            extend type Query {
+                baz : String
+            }
+
+            ######## Enums 
+          
+            enum Enum {
+                A
+            }
+            
+            extend enum Enum {
+                B
+            }
+
+            ######## Interface 
+            
+            interface Interface {
+                foo : String
+            }
+
+            extend interface Interface {
+                bar : String
+            }
+
+            extend interface Interface {
+                baz : String
+            }
+            
+            ######## Unions 
+            
+            type Foo {
+                foo : String
+            }
+            
+            type Bar {
+                bar : Scalar
+            }
+
+            union Union = Foo
+            
+            extend union Union = Bar
+            
+            ######## Input Objects 
+
+            input Input {
+                foo: String
+            }
+            
+            extend input Input {
+                bar: String
+            }
+
+            extend input Input {
+                baz: String
+            }
+
+            extend input Input {
+                faz: String
+            }
+            
+            ######## Scalar 
+
+            scalar Scalar
+            
+            extend scalar Scalar @directive1
+        '''
+
+
+        when:
+        def wiringFactory = new MockedWiringFactory() {
+            @Override
+            boolean providesScalar(ScalarWiringEnvironment env) {
+                return env.getScalarTypeDefinition().getName() == "Scalar"
+            }
+
+            @Override
+            GraphQLScalarType getScalar(ScalarWiringEnvironment env) {
+                def definition = env.getScalarTypeDefinition()
+                return GraphQLScalarType.newScalar()
+                        .name(definition.getName())
+                        .definition(definition)
+                        .extensionDefinitions(env.getExtensions())
+                        .coercing(TestUtil.mockCoercing())
+                        .build()
+            }
+        }
+
+        def runtimeWiring = RuntimeWiring.newRuntimeWiring()
+                .wiringFactory(wiringFactory)
+                .build()
+
+        def options = defaultOptions()
+
+        def types = new SchemaParser().parse(sdl)
+        GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(options, types, runtimeWiring)
+
+        then:
+        schema != null
+
+        (schema.getType("Query") as GraphQLObjectType).getExtensionDefinitions().size() == 2
+
+        (schema.getType("Enum") as GraphQLEnumType).getExtensionDefinitions().size() == 1
+
+        (schema.getType("Interface") as GraphQLInterfaceType).getExtensionDefinitions().size() == 2
+
+        (schema.getType("Union") as GraphQLUnionType).getExtensionDefinitions().size() == 1
+
+        (schema.getType("Input") as GraphQLInputObjectType).getExtensionDefinitions().size() == 3
+
+        // scalars are special - they are created via a WiringFactory - but this tests they are given the extensions
+        (schema.getType("Scalar") as GraphQLScalarType).getExtensionDefinitions().size() == 1
+    }
+
+    def "schema extensions and directives can be generated"() {
+        def sdl = '''
+
+            directive @sd1 on SCHEMA
+            directive @sd2 on SCHEMA
+            directive @sd3 on SCHEMA
+
+            schema @sd1 {
+                query : Query
+            }
+            
+            extend schema @sd2 {
+                mutation : Mutation
+            }
+            
+            extend schema @sd3 
+            
+            type Query {
+                f : String
+            }
+
+            type Mutation {
+                f : String
+            }
+        '''
+
+        when:
+        def typeDefinitionRegistry = new SchemaParser().parse(sdl)
+        GraphQLSchema schema = new SchemaGenerator().makeExecutableSchema(typeDefinitionRegistry, TestUtil.mockRuntimeWiring)
+
+        then:
+
+        schema.getQueryType().name == 'Query'
+        schema.getMutationType().name == 'Mutation'
+
+        when:
+        def directives = schema.getSchemaDirectives()
+
+        then:
+        directives.size() == 3
+        schema.getSchemaDirective("sd1") != null
+        schema.getSchemaDirective("sd2") != null
+        schema.getSchemaDirective("sd3") != null
+
+        when:
+        def directivesMap = schema.getSchemaDirectiveByName()
+        then:
+        directives.size() == 3
+        directivesMap["sd1"] != null
+        directivesMap["sd2"] != null
+        directivesMap["sd3"] != null
+
+        when:
+        directives = schema.getDirectives()
+
+        then:
+        directives.size() == 7 // built in ones :  include / skip and deprecated
+        def directiveNames = directives.collect { it.name }
+        directiveNames.contains("include")
+        directiveNames.contains("skip")
+        directiveNames.contains("deprecated")
+        directiveNames.contains("sd1")
+        directiveNames.contains("sd2")
+        directiveNames.contains("sd3")
+
+        when:
+        directivesMap = schema.getDirectiveByName()
+
+        then:
+        directivesMap.size() == 7 // built in ones
+        directivesMap.containsKey("include")
+        directivesMap.containsKey("skip")
+        directivesMap.containsKey("deprecated")
+        directivesMap.containsKey("sd1")
+        directivesMap.containsKey("sd2")
+        directivesMap.containsKey("sd3")
+    }
+
+    def "directive arg descriptions are captured correctly"() {
+        given:
+        def spec = '''
+        type Query {
+            foo: String
+        }
+        directive @MyDirective(
+        """
+            DOC
+        """
+        arg: String) on FIELD
+        '''
+        when:
+        def schema = schema(spec)
+
+        then:
+        schema.getDirective("MyDirective").getArgument("arg").description == "DOC"
+    }
+
+    def "capture DirectiveDefinitions"() {
+        given:
+        def spec = '''
+        type Query {
+            foo: String
+        }
+        directive @MyDirective on FIELD
+        '''
+        when:
+        def schema = schema(spec)
+        def directiveDefinition = schema.getDirective("MyDirective").getDefinition()
+        then:
+        directiveDefinition != null
+        directiveDefinition.getName() == "MyDirective"
+
+
+    }
+
+    def "directive with enum args"() {
+        given:
+
+        def spec = """
+        directive @myDirective (
+            enumArguments: [SomeEnum!] = []
+        ) on FIELD_DEFINITION
+
+        enum SomeEnum {
+            VALUE_1
+            VALUE_2
+        }
+        type Query{ foo: String }
+        """
+        when:
+        def schema = schema(spec)
+        def directive = schema.getDirective("myDirective")
+        then:
+        directive != null
+        GraphQLTypeUtil.simplePrint(directive.getArgument("enumArguments").getType()) == "[SomeEnum!]"
+        directive.getArgument("enumArguments").getDefaultValue() == []
+    }
+
+    def "scalar used as output is not in additional types"() {
+        given:
+
+        def spec = """
+        scalar UsedScalar
+        type Query{ foo: UsedScalar }
+        """
+        when:
+        def schema = schema(spec)
+        then:
+        schema.getType("UsedScalar") != null
+        schema.getAdditionalTypes().find { it.name == "UsedScalar" } == null
+    }
+
+    def "scalar used as input is not in additional types"() {
+        given:
+
+        def spec = """
+        scalar UsedScalar
+        input Input {
+            foo: UsedScalar
+        }
+        type Query{ foo(arg: Input): String }
+        """
+        when:
+        def schema = schema(spec)
+        then:
+        schema.getType("UsedScalar") != null
+        schema.getAdditionalTypes().find { it.name == "UsedScalar" } == null
+    }
+
+    def "unused scalar is not ignored and provided as additional type"() {
+        given:
+
+        def spec = """
+        scalar UnusedScalar
+        type Query{ foo: String }
+        """
+        when:
+        def schema = schema(spec)
+        then:
+        schema.getType("UnusedScalar") != null
+        schema.getAdditionalTypes().find { it.name == "UnusedScalar" } != null
+    }
+
+    def "interface can be implemented with additional optional arguments"() {
+        given:
+        def spec = """
+            interface Vehicle {
+              name: String!
+            }
+
+            type Car implements Vehicle {
+              name(charLimit: Int = 10): String!
+            }
+            type Query {
+                car: Car
+            }
+        """
+        when:
+        def schema = schema(spec)
+        then:
+        (schema.getType("Car") as GraphQLObjectType).getFieldDefinition("name").getArgument("charLimit") != null
+        (schema.getType("Car") as GraphQLObjectType).getInterfaces().size() == 1
+
+        (schema.getType("Vehicle") as GraphQLInterfaceType).getFieldDefinition("name").getArguments().size() == 0
+
     }
 
 }

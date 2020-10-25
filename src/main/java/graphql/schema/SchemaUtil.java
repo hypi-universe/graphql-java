@@ -5,7 +5,7 @@ import graphql.Internal;
 import graphql.introspection.Introspection;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -13,30 +13,39 @@ import java.util.Set;
 @Internal
 public class SchemaUtil {
 
-    private static final TypeTraverser TRAVERSER = new TypeTraverser();
+    private static final SchemaTraverser TRAVERSER = new SchemaTraverser();
 
 
-    Map<String, GraphQLType> allTypes(final GraphQLSchema schema, final Set<GraphQLType> additionalTypes) {
-        List<GraphQLType> roots = new ArrayList<GraphQLType>() {{
-            add(schema.getQueryType());
+    Map<String, GraphQLNamedType> allTypes(final GraphQLSchema schema, final Set<GraphQLType> additionalTypes, boolean afterTransform) {
+        List<GraphQLSchemaElement> roots = new ArrayList<>();
+        roots.add(schema.getQueryType());
 
-            if (schema.isSupportingMutations()) {
-                add(schema.getMutationType());
-            }
+        if (schema.isSupportingMutations()) {
+            roots.add(schema.getMutationType());
+        }
 
-            if (schema.isSupportingSubscriptions()) {
-                add(schema.getSubscriptionType());
-            }
+        if (schema.isSupportingSubscriptions()) {
+            roots.add(schema.getSubscriptionType());
+        }
 
-            if (additionalTypes != null) {
-                addAll(additionalTypes);
-            }
+        if (additionalTypes != null) {
+            roots.addAll(additionalTypes);
+        }
 
-            add(Introspection.__Schema);
-        }};
+        if (schema.getDirectives() != null) {
+            roots.addAll(schema.getDirectives());
+        }
+
+        roots.add(Introspection.__Schema);
 
         GraphQLTypeCollectingVisitor visitor = new GraphQLTypeCollectingVisitor();
-        TRAVERSER.depthFirst(visitor, roots);
+        SchemaTraverser traverser;
+        if (afterTransform) {
+            traverser = new SchemaTraverser(schemaElement -> schemaElement.getChildrenWithTypeReferences().getChildrenAsList());
+        } else {
+            traverser = new SchemaTraverser();
+        }
+        traverser.depthFirst(visitor, roots);
         return visitor.getResult();
     }
 
@@ -50,10 +59,10 @@ public class SchemaUtil {
      *
      */
     Map<String, List<GraphQLObjectType>> groupImplementations(GraphQLSchema schema) {
-        Map<String, List<GraphQLObjectType>> result = new HashMap<>();
+        Map<String, List<GraphQLObjectType>> result = new LinkedHashMap<>();
         for (GraphQLType type : schema.getAllTypesAsList()) {
             if (type instanceof GraphQLObjectType) {
-                for (GraphQLOutputType interfaceType : ((GraphQLObjectType) type).getInterfaces()) {
+                for (GraphQLNamedOutputType interfaceType : ((GraphQLObjectType) type).getInterfaces()) {
                     List<GraphQLObjectType> myGroup = result.computeIfAbsent(interfaceType.getName(), k -> new ArrayList<>());
                     myGroup.add((GraphQLObjectType) type);
                 }
@@ -97,7 +106,16 @@ public class SchemaUtil {
     }
 
     void replaceTypeReferences(GraphQLSchema schema) {
-        final Map<String, GraphQLType> typeMap = schema.getTypeMap();
-        TRAVERSER.depthFirst(new GraphQLTypeResolvingVisitor(typeMap), typeMap.values());
+        final Map<String, GraphQLNamedType> typeMap = schema.getTypeMap();
+        List<GraphQLSchemaElement> roots = new ArrayList<>(typeMap.values());
+        roots.addAll(schema.getDirectives());
+        SchemaTraverser schemaTraverser = new SchemaTraverser(schemaElement -> schemaElement.getChildrenWithTypeReferences().getChildrenAsList());
+        schemaTraverser.depthFirst(new GraphQLTypeResolvingVisitor(typeMap), roots);
+    }
+
+    void extractCodeFromTypes(GraphQLCodeRegistry.Builder codeRegistry, GraphQLSchema schema) {
+        Introspection.addCodeForIntrospectionTypes(codeRegistry);
+
+        TRAVERSER.depthFirst(new CodeRegistryVisitor(codeRegistry), schema.getAllTypesAsList());
     }
 }

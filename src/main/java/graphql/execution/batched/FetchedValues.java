@@ -1,19 +1,22 @@
 package graphql.execution.batched;
 
-import graphql.execution.ExecutionPath;
-import graphql.execution.ExecutionTypeInfo;
+import graphql.PublicApi;
+import graphql.execution.ExecutionStepInfo;
+import graphql.execution.ResultPath;
 
 import java.util.List;
 
+@Deprecated
+@PublicApi
 public class FetchedValues {
 
     private final List<FetchedValue> fetchedValues;
-    private final ExecutionTypeInfo executionTypeInfo;
-    private final ExecutionPath path;
+    private final ExecutionStepInfo executionStepInfo;
+    private final ResultPath path;
 
-    public FetchedValues(List<FetchedValue> fetchedValues, ExecutionTypeInfo executionTypeInfo, ExecutionPath path) {
+    public FetchedValues(List<FetchedValue> fetchedValues, ExecutionStepInfo executionStepInfo, ResultPath path) {
         this.fetchedValues = fetchedValues;
-        this.executionTypeInfo = executionTypeInfo;
+        this.executionStepInfo = executionStepInfo;
         this.path = path;
     }
 
@@ -21,11 +24,11 @@ public class FetchedValues {
         return fetchedValues;
     }
 
-    public ExecutionTypeInfo getExecutionTypeInfo() {
-        return executionTypeInfo;
+    public ExecutionStepInfo getExecutionStepInfo() {
+        return executionStepInfo;
     }
 
-    public ExecutionPath getPath() {
+    public ResultPath getPath() {
         return path;
     }
 }

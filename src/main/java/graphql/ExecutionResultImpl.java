@@ -13,10 +13,10 @@ import static java.util.stream.Collectors.toList;
 @Internal
 public class ExecutionResultImpl implements ExecutionResult {
 
-    private final Object data;
     private final List<GraphQLError> errors;
-    private final transient boolean dataPresent;
+    private final Object data;
     private final transient Map<Object, Object> extensions;
+    private final transient boolean dataPresent;
 
     public ExecutionResultImpl(GraphQLError error) {
         this(false, null, Collections.singletonList(error), null);
@@ -32,6 +32,10 @@ public class ExecutionResultImpl implements ExecutionResult {
 
     public ExecutionResultImpl(Object data, List<? extends GraphQLError> errors, Map<Object, Object> extensions) {
         this(true, data, errors, extensions);
+    }
+
+    public ExecutionResultImpl(ExecutionResultImpl other) {
+        this(other.dataPresent, other.data, other.errors, other.extensions);
     }
 
     private ExecutionResultImpl(boolean dataPresent, Object data, List<? extends GraphQLError> errors, Map<Object, Object> extensions) {
@@ -52,15 +56,15 @@ public class ExecutionResultImpl implements ExecutionResult {
     }
 
     @Override
+    public List<GraphQLError> getErrors() {
+        return errors;
+    }
+
+    @Override
     @SuppressWarnings("TypeParameterUnusedInFormals")
     public <T> T getData() {
         //noinspection unchecked
         return (T) data;
-    }
-
-    @Override
-    public List<GraphQLError> getErrors() {
-        return errors;
     }
 
     @Override
@@ -71,11 +75,11 @@ public class ExecutionResultImpl implements ExecutionResult {
     @Override
     public Map<String, Object> toSpecification() {
         Map<String, Object> result = new LinkedHashMap<>();
-        if (dataPresent) {
-            result.put("data", data);
-        }
         if (errors != null && !errors.isEmpty()) {
             result.put("errors", errorsToSpec(errors));
+        }
+        if (dataPresent) {
+            result.put("data", data);
         }
         if (extensions != null) {
             result.put("extensions", extensions);
@@ -90,8 +94,8 @@ public class ExecutionResultImpl implements ExecutionResult {
     @Override
     public String toString() {
         return "ExecutionResultImpl{" +
-                "data=" + data +
-                ", errors=" + errors +
+                "errors=" + errors +
+                ", data=" + data +
                 ", dataPresent=" + dataPresent +
                 ", extensions=" + extensions +
                 '}';
@@ -113,7 +117,7 @@ public class ExecutionResultImpl implements ExecutionResult {
         private List<GraphQLError> errors = new ArrayList<>();
         private Map<Object, Object> extensions;
 
-        public Builder from(ExecutionResultImpl executionResult) {
+        public Builder from(ExecutionResult executionResult) {
             dataPresent = executionResult.isDataPresent();
             data = executionResult.getData();
             errors = new ArrayList<>(executionResult.getErrors());

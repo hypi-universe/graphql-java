@@ -19,7 +19,6 @@ import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertValidName;
 import static graphql.schema.DataFetcherFactoryEnvironment.newDataFetchingFactoryEnvironment;
 import static graphql.util.FpKit.getByName;
-import static graphql.util.FpKit.valuesToList;
 
 /**
  * Fields are the ways you get data values in graphql and a field definition represents a field, its type, the arguments it takes
@@ -32,42 +31,71 @@ import static graphql.util.FpKit.valuesToList;
  * See http://graphql.org/learn/queries/#fields for more details on the concept.
  */
 @PublicApi
-public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
+public class GraphQLFieldDefinition implements GraphQLNamedSchemaElement, GraphQLDirectiveContainer {
 
     private final String name;
     private final String description;
-    private GraphQLOutputType type;
+    private final GraphQLOutputType originalType;
     private final DataFetcherFactory dataFetcherFactory;
     private final String deprecationReason;
     private final List<GraphQLArgument> arguments;
     private final List<GraphQLDirective> directives;
     private final FieldDefinition definition;
 
+    private GraphQLOutputType replacedType;
 
-    @Deprecated
+    public static final String CHILD_ARGUMENTS = "arguments";
+    public static final String CHILD_DIRECTIVES = "directives";
+    public static final String CHILD_TYPE = "type";
+
+
+    /**
+     * @param name              the name
+     * @param description       the description
+     * @param type              the field type
+     * @param dataFetcher       the field data fetcher
+     * @param arguments         the field arguments
+     * @param deprecationReason the deprecation reason
+     *
+     * @deprecated use the {@link #newFieldDefinition()} builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLFieldDefinition(String name, String description, GraphQLOutputType type, DataFetcher<?> dataFetcher, List<GraphQLArgument> arguments, String deprecationReason) {
         this(name, description, type, DataFetcherFactories.useDataFetcher(dataFetcher), arguments, deprecationReason, Collections.emptyList(), null);
     }
 
+    /**
+     * @param name               the name
+     * @param description        the description
+     * @param type               the field type
+     * @param dataFetcherFactory the field data fetcher factory
+     * @param arguments          the field arguments
+     * @param deprecationReason  the deprecation reason
+     * @param directives         the directives on this type element
+     * @param definition         the AST definition
+     *
+     * @deprecated use the {@link #newFieldDefinition()} builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLFieldDefinition(String name, String description, GraphQLOutputType type, DataFetcherFactory dataFetcherFactory, List<GraphQLArgument> arguments, String deprecationReason, List<GraphQLDirective> directives, FieldDefinition definition) {
-        this.directives = directives;
         assertValidName(name);
-        assertNotNull(dataFetcherFactory, "you have to provide a DataFetcher (or DataFetcherFactory)");
-        assertNotNull(type, "type can't be null");
-        assertNotNull(arguments, "arguments can't be null");
+        assertNotNull(dataFetcherFactory, () -> "you have to provide a DataFetcher (or DataFetcherFactory)");
+        assertNotNull(type, () -> "type can't be null");
+        assertNotNull(arguments, () -> "arguments can't be null");
         this.name = name;
         this.description = description;
-        this.type = type;
+        this.originalType = type;
         this.dataFetcherFactory = dataFetcherFactory;
-        this.arguments = Collections.unmodifiableList(new ArrayList<>(arguments));
+        this.arguments = Collections.unmodifiableList(arguments);
+        this.directives = directives;
         this.deprecationReason = deprecationReason;
         this.definition = definition;
     }
 
     void replaceType(GraphQLOutputType type) {
-        this.type = type;
+        this.replacedType = type;
     }
 
     @Override
@@ -77,10 +105,11 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
 
 
     public GraphQLOutputType getType() {
-        return type;
+        return replacedType != null ? replacedType : originalType;
     }
 
-    public DataFetcher getDataFetcher() {
+    // to be removed in a future version when all code is in the code registry
+    DataFetcher getDataFetcher() {
         return dataFetcherFactory.get(newDataFetchingFactoryEnvironment()
                 .fieldDefinition(this)
                 .build());
@@ -88,7 +117,9 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
 
     public GraphQLArgument getArgument(String name) {
         for (GraphQLArgument argument : arguments) {
-            if (argument.getName().equals(name)) return argument;
+            if (argument.getName().equals(name)) {
+                return argument;
+            }
         }
         return null;
     }
@@ -122,7 +153,7 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
     public String toString() {
         return "GraphQLFieldDefinition{" +
                 "name='" + name + '\'' +
-                ", type=" + type +
+                ", type=" + getType() +
                 ", arguments=" + arguments +
                 ", dataFetcherFactory=" + dataFetcherFactory +
                 ", description='" + description + '\'' +
@@ -146,17 +177,54 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
     }
 
     @Override
-    public TraversalControl accept(TraverserContext<GraphQLType> context, GraphQLTypeVisitor visitor) {
+    public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
         return visitor.visitGraphQLFieldDefinition(this, context);
     }
 
     @Override
-    public List<GraphQLType> getChildren() {
-        List<GraphQLType> children =  new ArrayList<>();
-        children.add(type);
+    public List<GraphQLSchemaElement> getChildren() {
+        List<GraphQLSchemaElement> children = new ArrayList<>();
+        children.add(getType());
         children.addAll(arguments);
+        children.addAll(directives);
         return children;
     }
+
+    @Override
+    public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
+        return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
+                .children(CHILD_ARGUMENTS, arguments)
+                .children(CHILD_DIRECTIVES, directives)
+                .child(CHILD_TYPE, originalType)
+                .build();
+    }
+
+    // Spock mocking fails with the real return type GraphQLFieldDefinition
+    @Override
+    public GraphQLSchemaElement withNewChildren(SchemaElementChildrenContainer newChildren) {
+        return transform(builder ->
+                builder.replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
+                        .replaceArguments(newChildren.getChildren(CHILD_ARGUMENTS))
+                        .type((GraphQLOutputType) newChildren.getChildOrNull(CHILD_TYPE))
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
+    }
+
 
     public static Builder newFieldDefinition(GraphQLFieldDefinition existing) {
         return new Builder(existing);
@@ -167,10 +235,8 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
     }
 
     @PublicApi
-    public static class Builder {
+    public static class Builder extends GraphqlTypeBuilder {
 
-        private String name;
-        private String description;
         private GraphQLOutputType type;
         private DataFetcherFactory<?> dataFetcherFactory;
         private String deprecationReason;
@@ -185,7 +251,7 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
         public Builder(GraphQLFieldDefinition existing) {
             this.name = existing.getName();
             this.description = existing.getDescription();
-            this.type = existing.getType();
+            this.type = existing.originalType;
             this.dataFetcherFactory = DataFetcherFactories.useDataFetcher(existing.getDataFetcher());
             this.deprecationReason = existing.getDeprecationReason();
             this.definition = existing.getDefinition();
@@ -194,18 +260,26 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
         }
 
 
+        @Override
         public Builder name(String name) {
-            this.name = name;
+            super.name(name);
+            return this;
+        }
+
+        @Override
+        public Builder description(String description) {
+            super.description(description);
+            return this;
+        }
+
+        @Override
+        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
+            super.comparatorRegistry(comparatorRegistry);
             return this;
         }
 
         public Builder definition(FieldDefinition definition) {
             this.definition = definition;
-            return this;
-        }
-
-        public Builder description(String description) {
-            this.description = description;
             return this;
         }
 
@@ -232,9 +306,12 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
          * @param dataFetcher the data fetcher to use
          *
          * @return this builder
+         *
+         * @deprecated use {@link graphql.schema.GraphQLCodeRegistry} instead
          */
+        @Deprecated
         public Builder dataFetcher(DataFetcher<?> dataFetcher) {
-            assertNotNull(dataFetcher, "dataFetcher must be not null");
+            assertNotNull(dataFetcher, () -> "dataFetcher must be not null");
             this.dataFetcherFactory = DataFetcherFactories.useDataFetcher(dataFetcher);
             return this;
         }
@@ -242,12 +319,15 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
         /**
          * Sets the {@link graphql.schema.DataFetcherFactory} to use with this field.
          *
-         * @param dataFetcherFactory the factory to use
+         * @param dataFetcherFactory the data fetcher factory
          *
          * @return this builder
+         *
+         * @deprecated use {@link graphql.schema.GraphQLCodeRegistry} instead
          */
+        @Deprecated
         public Builder dataFetcherFactory(DataFetcherFactory dataFetcherFactory) {
-            assertNotNull(dataFetcherFactory, "dataFetcherFactory must be not null");
+            assertNotNull(dataFetcherFactory, () -> "dataFetcherFactory must be not null");
             this.dataFetcherFactory = dataFetcherFactory;
             return this;
         }
@@ -258,14 +338,17 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
          * @param value the value to always return
          *
          * @return this builder
+         *
+         * @deprecated use {@link graphql.schema.GraphQLCodeRegistry} instead
          */
+        @Deprecated
         public Builder staticValue(final Object value) {
             this.dataFetcherFactory = DataFetcherFactories.useDataFetcher(environment -> value);
             return this;
         }
 
         public Builder argument(GraphQLArgument argument) {
-            assertNotNull(argument, "argument can't be null");
+            assertNotNull(argument, () -> "argument can't be null");
             this.arguments.put(argument.getName(), argument);
             return this;
         }
@@ -302,8 +385,38 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
             return this;
         }
 
+        /**
+         * This adds the list of arguments to the field.
+         *
+         * @param arguments the arguments to add
+         *
+         * @return this
+         *
+         * @deprecated This is a badly named method and is replaced by {@link #arguments(java.util.List)}
+         */
+        @Deprecated
         public Builder argument(List<GraphQLArgument> arguments) {
-            assertNotNull(arguments, "arguments can't be null");
+            return arguments(arguments);
+        }
+
+        /**
+         * This adds the list of arguments to the field.
+         *
+         * @param arguments the arguments to add
+         *
+         * @return this
+         */
+        public Builder arguments(List<GraphQLArgument> arguments) {
+            assertNotNull(arguments, () -> "arguments can't be null");
+            for (GraphQLArgument argument : arguments) {
+                argument(argument);
+            }
+            return this;
+        }
+
+        public Builder replaceArguments(List<GraphQLArgument> arguments) {
+            assertNotNull(arguments, () -> "arguments can't be null");
+            this.arguments.clear();
             for (GraphQLArgument argument : arguments) {
                 argument(argument);
             }
@@ -327,7 +440,7 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
         }
 
         public Builder withDirectives(GraphQLDirective... directives) {
-            assertNotNull(directives, "directives can't be null");
+            assertNotNull(directives, () -> "directives can't be null");
             for (GraphQLDirective directive : directives) {
                 withDirective(directive);
             }
@@ -335,8 +448,17 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
         }
 
         public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, "directive can't be null");
+            assertNotNull(directive, () -> "directive can't be null");
             directives.put(directive.getName(), directive);
+            return this;
+        }
+
+        public Builder replaceDirectives(List<GraphQLDirective> directives) {
+            assertNotNull(directives, () -> "directive can't be null");
+            this.directives.clear();
+            for (GraphQLDirective directive : directives) {
+                this.directives.put(directive.getName(), directive);
+            }
             return this;
         }
 
@@ -358,8 +480,15 @@ public class GraphQLFieldDefinition implements GraphQLDirectiveContainer {
             if (dataFetcherFactory == null) {
                 dataFetcherFactory = DataFetcherFactories.useDataFetcher(new PropertyDataFetcher<>(name));
             }
-            return new GraphQLFieldDefinition(name, description, type, dataFetcherFactory,
-                    valuesToList(arguments), deprecationReason, valuesToList(directives), definition);
+            return new GraphQLFieldDefinition(
+                    name,
+                    description,
+                    type,
+                    dataFetcherFactory,
+                    sort(arguments, GraphQLFieldDefinition.class, GraphQLArgument.class),
+                    deprecationReason,
+                    sort(directives, GraphQLFieldDefinition.class, GraphQLDirective.class),
+                    definition);
         }
     }
 }

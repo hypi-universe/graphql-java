@@ -2,6 +2,7 @@ package graphql.validation.rules;
 
 
 import graphql.Assert;
+import graphql.Internal;
 import graphql.execution.TypeFromAST;
 import graphql.language.FragmentDefinition;
 import graphql.language.FragmentSpread;
@@ -20,6 +21,9 @@ import graphql.validation.ValidationErrorType;
 import java.util.Collections;
 import java.util.List;
 
+import static graphql.schema.GraphQLTypeUtil.simplePrint;
+
+@Internal
 public class PossibleFragmentSpreads extends AbstractRule {
 
     public PossibleFragmentSpreads(ValidationContext validationContext, ValidationErrorCollector validationErrorCollector) {
@@ -32,11 +36,11 @@ public class PossibleFragmentSpreads extends AbstractRule {
         GraphQLOutputType fragType = getValidationContext().getOutputType();
         GraphQLCompositeType parentType = getValidationContext().getParentType();
         if (fragType == null || parentType == null) return;
-        if (!doTypesOverlap(fragType, parentType)) {
-            String message = String.format("Fragment cannot be spread here as objects of " +
-                    "type %s can never be of type %s", parentType.getName(), fragType.getName());
-            addError(ValidationErrorType.InvalidFragmentType, inlineFragment.getSourceLocation(), message);
 
+        if (isValidTargetCompositeType(fragType) && isValidTargetCompositeType(parentType) && !doTypesOverlap(fragType, parentType)) {
+            String message = String.format("Fragment cannot be spread here as objects of " +
+                    "type %s can never be of type %s", parentType.getName(), simplePrint(fragType));
+            addError(ValidationErrorType.InvalidFragmentType, inlineFragment.getSourceLocation(), message);
         }
     }
 
@@ -48,9 +52,9 @@ public class PossibleFragmentSpreads extends AbstractRule {
         GraphQLCompositeType parentType = getValidationContext().getParentType();
         if (typeCondition == null || parentType == null) return;
 
-        if (!doTypesOverlap(typeCondition, parentType)) {
+        if (isValidTargetCompositeType(typeCondition) && isValidTargetCompositeType(parentType) && !doTypesOverlap(typeCondition, parentType)) {
             String message = String.format("Fragment %s cannot be spread here as objects of " +
-                    "type %s can never be of type %s", fragmentSpread.getName(), parentType.getName(), typeCondition.getName());
+                    "type %s can never be of type %s", fragmentSpread.getName(), parentType.getName(), simplePrint(typeCondition));
             addError(ValidationErrorType.InvalidFragmentType, fragmentSpread.getSourceLocation(), message);
         }
     }
@@ -79,5 +83,15 @@ public class PossibleFragmentSpreads extends AbstractRule {
             Assert.assertShouldNeverHappen();
         }
         return possibleConditionTypes;
+    }
+
+    /**
+     * Per spec: The target type of fragment (type condition)
+     * must have kind UNION, INTERFACE, or OBJECT.
+     * @param type GraphQLType
+     * @return true if it is a union, interface, or object.
+     */
+    private boolean isValidTargetCompositeType(GraphQLType type) {
+        return type instanceof GraphQLCompositeType;
     }
 }

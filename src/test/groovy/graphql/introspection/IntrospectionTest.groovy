@@ -1,6 +1,6 @@
 package graphql.introspection
 
-import graphql.GraphQL
+
 import graphql.TestUtil
 import spock.lang.Specification
 
@@ -17,8 +17,7 @@ class IntrospectionTest extends Specification {
             }
         '''
 
-        def schema = TestUtil.schema(spec)
-        def graphQL = GraphQL.newGraphQL(schema).build()
+        def graphQL = TestUtil.graphQL(spec).build()
         when:
         def executionResult = graphQL.execute(IntrospectionQuery.INTROSPECTION_QUERY)
         then:
@@ -57,5 +56,29 @@ class IntrospectionTest extends Specification {
                         ]
                 ]
         ]
+    }
+
+    def "schema description can be defined in SDL and queried via introspection"() {
+        given:
+        def sdl = ''' 
+        """
+        This is my schema
+        """
+        schema {
+            query: Foo
+        }
+        
+        type Foo {
+            foo: String
+        }
+        
+        '''
+        def graphql = TestUtil.graphQL(sdl).build()
+        when:
+        def data = graphql.execute("{__schema { description }}").getData()
+
+        then:
+        data == [__schema: [description: "This is my schema"]]
+
     }
 }

@@ -7,8 +7,16 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static graphql.language.NodeUtil.assertNewChildrenAreEmpty;
+import static java.util.Collections.emptyMap;
 
 @PublicApi
 public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValue>, NamedNode<EnumValue> {
@@ -16,8 +24,8 @@ public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValu
     private final String name;
 
     @Internal
-    protected EnumValue(String name, SourceLocation sourceLocation, List<Comment> comments) {
-        super(sourceLocation, comments);
+    protected EnumValue(String name, SourceLocation sourceLocation, List<Comment> comments, IgnoredChars ignoredChars, Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData);
         this.name = name;
     }
 
@@ -25,11 +33,10 @@ public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValu
     /**
      * alternative to using a Builder for convenience
      *
-     * @param name
+     * @param name of the enum value
      */
     public EnumValue(String name) {
-        super(null, new ArrayList<>());
-        this.name = name;
+        this(name, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
     @Override
@@ -44,18 +51,33 @@ public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValu
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer().build();
+    }
+
+    @Override
+    public EnumValue withNewChildren(NodeChildrenContainer newChildren) {
+        assertNewChildrenAreEmpty(newChildren);
+        return this;
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         EnumValue that = (EnumValue) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
     public EnumValue deepCopy() {
-        return new EnumValue(name, getSourceLocation(), getComments());
+        return new EnumValue(name, getSourceLocation(), getComments(), getIgnoredChars(), getAdditionalData());
     }
 
     @Override
@@ -88,6 +110,8 @@ public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValu
         private SourceLocation sourceLocation;
         private String name;
         private List<Comment> comments = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -96,6 +120,7 @@ public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValu
             this.sourceLocation = existing.getSourceLocation();
             this.comments = existing.getComments();
             this.name = existing.getName();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
 
@@ -114,9 +139,24 @@ public class EnumValue extends AbstractNode<EnumValue> implements Value<EnumValu
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public EnumValue build() {
-            EnumValue enumValue = new EnumValue(name, sourceLocation, comments);
-            return enumValue;
+            return new EnumValue(name, sourceLocation, comments, ignoredChars, additionalData);
         }
     }
 }

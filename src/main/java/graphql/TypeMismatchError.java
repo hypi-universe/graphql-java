@@ -1,10 +1,6 @@
 package graphql;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import graphql.execution.ExecutionPath;
+import graphql.execution.ResultPath;
 import graphql.introspection.Introspection;
 import graphql.language.SourceLocation;
 import graphql.schema.GraphQLEnumType;
@@ -17,6 +13,10 @@ import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLType;
 import graphql.schema.GraphQLUnionType;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import static graphql.Assert.assertNotNull;
 import static java.lang.String.format;
 
@@ -27,20 +27,20 @@ public class TypeMismatchError implements GraphQLError {
     private final List<Object> path;
     private final GraphQLType expectedType;
 
-    public TypeMismatchError(ExecutionPath path, GraphQLType expectedType) {
+    public TypeMismatchError(ResultPath path, GraphQLType expectedType) {
         this.path = assertNotNull(path).toList();
         this.expectedType = assertNotNull(expectedType);
         this.message = mkMessage(path, expectedType);
     }
 
-    private String mkMessage(ExecutionPath path, GraphQLType expectedType) {
+    private String mkMessage(ResultPath path, GraphQLType expectedType) {
         String expectedTypeKind = GraphQLTypeToTypeKindMapping.getTypeKindFromGraphQLType(expectedType).name();
         return format("Can't resolve value (%s) : type mismatch error, expected type %s", path, expectedTypeKind);
     }
 
     static class GraphQLTypeToTypeKindMapping {
 
-        private static final Map<Class<? extends GraphQLType>, Introspection.TypeKind> registry = new HashMap<Class<? extends GraphQLType>, Introspection.TypeKind>() {{
+        private static final Map<Class<? extends GraphQLType>, Introspection.TypeKind> registry = new LinkedHashMap<Class<? extends GraphQLType>, Introspection.TypeKind>() {{
             put(GraphQLEnumType.class, Introspection.TypeKind.ENUM);
             put(GraphQLList.class, Introspection.TypeKind.LIST);
             put(GraphQLObjectType.class, Introspection.TypeKind.OBJECT);
@@ -83,7 +83,7 @@ public class TypeMismatchError implements GraphQLError {
     public String toString() {
         return "TypeMismatchError{" +
                 "path=" + path +
-                "expectedType=" + expectedType +
+                ", expectedType=" + expectedType +
                 '}';
     }
 

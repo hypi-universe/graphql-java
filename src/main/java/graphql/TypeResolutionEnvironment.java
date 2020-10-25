@@ -1,6 +1,6 @@
 package graphql;
 
-import graphql.language.Field;
+import graphql.execution.MergedField;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.GraphQLType;
 
@@ -9,19 +9,20 @@ import java.util.Map;
 /**
  * This is passed to a {@link graphql.schema.TypeResolver} to help with object type resolution.
  *
- * See {@link graphql.schema.TypeResolver#getType(TypeResolutionEnvironment)} for how this is used
+ * See {@link graphql.schema.TypeResolver#getType} for how this is used
  */
 @SuppressWarnings("TypeParameterUnusedInFormals")
+@PublicApi
 public class TypeResolutionEnvironment {
 
     private final Object object;
     private final Map<String, Object> arguments;
-    private final Field field;
+    private final MergedField field;
     private final GraphQLType fieldType;
     private final GraphQLSchema schema;
     private final Object context;
 
-    public TypeResolutionEnvironment(Object object, Map<String, Object> arguments, Field field, GraphQLType fieldType, GraphQLSchema schema, final Object context) {
+    public TypeResolutionEnvironment(Object object, Map<String, Object> arguments, MergedField field, GraphQLType fieldType, GraphQLSchema schema, final Object context) {
         this.object = object;
         this.arguments = arguments;
         this.field = field;
@@ -52,7 +53,7 @@ public class TypeResolutionEnvironment {
     /**
      * @return the graphql field in question
      */
-    public Field getField() {
+    public MergedField getField() {
         return field;
     }
 

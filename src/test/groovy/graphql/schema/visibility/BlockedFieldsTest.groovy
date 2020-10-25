@@ -2,6 +2,7 @@ package graphql.schema.visibility
 
 import graphql.StarWarsSchema
 import graphql.schema.GraphQLInputObjectType
+import graphql.schema.GraphqlTypeComparatorRegistry
 import spock.lang.Specification
 import spock.lang.Unroll
 
@@ -27,6 +28,7 @@ class BlockedFieldsTest extends Specification {
             .name("secretRoles")
             .type(list(GraphQLString))
     )
+            .comparatorRegistry(GraphqlTypeComparatorRegistry.BY_NAME_REGISTRY)
             .build()
 
     @Unroll
@@ -43,12 +45,12 @@ class BlockedFieldsTest extends Specification {
 
         where:
         why                              | type                              | patterns                                       | expectedFieldList
-        "partial field name match"       | StarWarsSchema.characterInterface | [".*\\.name"]                                  | ["id", "friends", "appearsIn"]
-        "no match"                       | StarWarsSchema.characterInterface | ["Character.mismatched"]                       | ["id", "name", "friends", "appearsIn"]
+        "partial field name match"       | StarWarsSchema.characterInterface | [".*\\.name"]                                  | ["appearsIn", "friends", "id"]
+        "no match"                       | StarWarsSchema.characterInterface | ["Character.mismatched"]                       | ["appearsIn", "friends", "id", "name",]
         "all blocked"                    | StarWarsSchema.characterInterface | [".*"]                                         | []
-        "needs FQN to match"             | StarWarsSchema.characterInterface | ["name"]                                       | ["id", "name", "friends", "appearsIn"]
-        "FQN"                            | StarWarsSchema.characterInterface | ["Character.name"]                             | ["id", "friends", "appearsIn"]
-        "multiple patterns"              | StarWarsSchema.characterInterface | ["Character.name", ".*.id"]                    | ["friends", "appearsIn"]
+        "needs FQN to match"             | StarWarsSchema.characterInterface | ["name"]                                       | ["appearsIn", "friends", "id", "name",]
+        "FQN"                            | StarWarsSchema.characterInterface | ["Character.name"]                             | ["appearsIn", "friends", "id",]
+        "multiple patterns"              | StarWarsSchema.characterInterface | ["Character.name", ".*.id"]                    | ["appearsIn", "friends",]
 
         "input partial field name match" | accessInputType                   | [".*\\.secretRoles"]                           | ["openRoles", "questionableRoles"]
         "input no match"                 | accessInputType                   | ["Access.mismatched"]                          | ["openRoles", "questionableRoles", "secretRoles"]

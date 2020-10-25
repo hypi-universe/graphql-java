@@ -28,9 +28,48 @@ import static graphql.execution.instrumentation.SimpleInstrumentationContext.whe
 @PublicApi
 public class TracingInstrumentation extends SimpleInstrumentation {
 
+    public static class Options {
+        private final boolean includeTrivialDataFetchers;
+
+        private Options(boolean includeTrivialDataFetchers) {
+            this.includeTrivialDataFetchers = includeTrivialDataFetchers;
+        }
+
+        public boolean isIncludeTrivialDataFetchers() {
+            return includeTrivialDataFetchers;
+        }
+
+        /**
+         * By default trivial data fetchers (those that simple pull data from an object into field) are included
+         * in tracing but you can control this behavior.
+         *
+         * @param flag the flag on whether to trace trivial data fetchers
+         *
+         * @return a new options object
+         */
+        public Options includeTrivialDataFetchers(boolean flag) {
+            return new Options(flag);
+        }
+
+        public static Options newOptions() {
+            return new Options(true);
+        }
+
+    }
+
+    public TracingInstrumentation() {
+        this(Options.newOptions());
+    }
+
+    public TracingInstrumentation(Options options) {
+        this.options = options;
+    }
+
+    private final Options options;
+
     @Override
     public InstrumentationState createState() {
-        return new TracingSupport();
+        return new TracingSupport(options.includeTrivialDataFetchers);
     }
 
     @Override
@@ -38,8 +77,7 @@ public class TracingInstrumentation extends SimpleInstrumentation {
         Map<Object, Object> currentExt = executionResult.getExtensions();
 
         TracingSupport tracingSupport = parameters.getInstrumentationState();
-        Map<Object, Object> tracingMap = new LinkedHashMap<>();
-        tracingMap.putAll(currentExt == null ? Collections.emptyMap() : currentExt);
+        Map<Object, Object> tracingMap = new LinkedHashMap<>(currentExt == null ? Collections.emptyMap() : currentExt);
         tracingMap.put("tracing", tracingSupport.snapshotTracingData());
 
         return CompletableFuture.completedFuture(new ExecutionResultImpl(executionResult.getData(), executionResult.getErrors(), tracingMap));
@@ -48,7 +86,7 @@ public class TracingInstrumentation extends SimpleInstrumentation {
     @Override
     public InstrumentationContext<Object> beginFieldFetch(InstrumentationFieldFetchParameters parameters) {
         TracingSupport tracingSupport = parameters.getInstrumentationState();
-        TracingSupport.TracingContext ctx = tracingSupport.beginField(parameters.getEnvironment());
+        TracingSupport.TracingContext ctx = tracingSupport.beginField(parameters.getEnvironment(), parameters.isTrivialDataFetcher());
         return whenCompleted((result, t) -> ctx.onEnd());
     }
 

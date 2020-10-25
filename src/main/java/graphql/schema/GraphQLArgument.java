@@ -1,6 +1,7 @@
 package graphql.schema;
 
 
+import graphql.Internal;
 import graphql.PublicApi;
 import graphql.language.InputValueDefinition;
 import graphql.util.FpKit;
@@ -16,7 +17,6 @@ import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertValidName;
-import static graphql.util.FpKit.valuesToList;
 
 /**
  * This defines an argument that can be supplied to a graphql field (via {@link graphql.schema.GraphQLFieldDefinition}.
@@ -38,34 +38,69 @@ import static graphql.util.FpKit.valuesToList;
  * specific value on that directive.
  */
 @PublicApi
-public class GraphQLArgument implements GraphQLDirectiveContainer {
+public class GraphQLArgument implements GraphQLNamedSchemaElement, GraphQLInputValueDefinition {
 
     private final String name;
     private final String description;
-    private GraphQLInputType type;
+    private final GraphQLInputType originalType;
     private final Object value;
     private final Object defaultValue;
     private final InputValueDefinition definition;
     private final List<GraphQLDirective> directives;
 
+    private GraphQLInputType replacedType;
+
+    public static final String CHILD_DIRECTIVES = "directives";
+    public static final String CHILD_TYPE = "type";
+
+    private static final Object DEFAULT_VALUE_SENTINEL = new Object() {
+    };
+
+    /**
+     * @param name         the arg name
+     * @param description  the arg description
+     * @param type         the arg type
+     * @param defaultValue the default value
+     *
+     * @deprecated use the {@link #newArgument()} builder pattern instead, as this constructor will be made private in a future version.
+     */
+    @Internal
+    @Deprecated
     public GraphQLArgument(String name, String description, GraphQLInputType type, Object defaultValue) {
         this(name, description, type, defaultValue, null);
     }
 
+    /**
+     * @param name the arg name
+     * @param type the arg type
+     *
+     * @deprecated use the {@link #newArgument()} builder pattern instead, as this constructor will be made private in a future version.
+     */
+    @Internal
+    @Deprecated
     public GraphQLArgument(String name, GraphQLInputType type) {
-        this(name, null, type, null, null);
+        this(name, null, type, DEFAULT_VALUE_SENTINEL, null);
     }
 
+    /**
+     * @param name         the arg name
+     * @param description  the arg description
+     * @param type         the arg type
+     * @param defaultValue the default value
+     * @param definition   the AST definition
+     *
+     * @deprecated use the {@link #newArgument()} builder pattern instead, as this constructor will be made private in a future version.
+     */
     public GraphQLArgument(String name, String description, GraphQLInputType type, Object defaultValue, InputValueDefinition definition) {
         this(name, description, type, defaultValue, null, definition, Collections.emptyList());
     }
 
     private GraphQLArgument(String name, String description, GraphQLInputType type, Object defaultValue, Object value, InputValueDefinition definition, List<GraphQLDirective> directives) {
         assertValidName(name);
-        assertNotNull(type, "type can't be null");
+        assertNotNull(type, () -> "type can't be null");
         this.name = name;
         this.description = description;
-        this.type = type;
+        this.originalType = type;
         this.defaultValue = defaultValue;
         this.value = value;
         this.definition = definition;
@@ -74,7 +109,7 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
 
 
     void replaceType(GraphQLInputType type) {
-        this.type = type;
+        this.replacedType = type;
     }
 
     @Override
@@ -83,7 +118,7 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
     }
 
     public GraphQLInputType getType() {
-        return type;
+        return replacedType != null ? replacedType : originalType;
     }
 
     /**
@@ -94,7 +129,11 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
      * @return the default value of an argument
      */
     public Object getDefaultValue() {
-        return defaultValue;
+        return defaultValue == DEFAULT_VALUE_SENTINEL ? null : defaultValue;
+    }
+
+    public boolean hasSetDefaultValue() {
+        return defaultValue != DEFAULT_VALUE_SENTINEL;
     }
 
     /**
@@ -120,6 +159,48 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
         return new ArrayList<>(directives);
     }
 
+
+    @Override
+    public List<GraphQLSchemaElement> getChildren() {
+        List<GraphQLSchemaElement> children = new ArrayList<>();
+        children.add(getType());
+        children.addAll(directives);
+        return children;
+    }
+
+
+    @Override
+    public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
+        return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
+                .children(CHILD_DIRECTIVES, directives)
+                .child(CHILD_TYPE, originalType)
+                .build();
+    }
+
+    @Override
+    public GraphQLArgument withNewChildren(SchemaElementChildrenContainer newChildren) {
+        return transform(builder ->
+                builder.type(newChildren.getChildOrNull(CHILD_TYPE))
+                        .replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES)));
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
+    }
+
+
     /**
      * This helps you transform the current GraphQLArgument into another one by starting a builder with all
      * the current values and allows you to transform it how you want.
@@ -143,22 +224,25 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
     }
 
     @Override
-    public TraversalControl accept(TraverserContext<GraphQLType> context, GraphQLTypeVisitor visitor) {
+    public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
         return visitor.visitGraphQLArgument(this, context);
     }
 
     @Override
-    public List<GraphQLType> getChildren() {
-        return Collections.singletonList(type);
+    public String toString() {
+        return "GraphQLArgument{" +
+                "name='" + name + '\'' +
+                ", value=" + value +
+                ", defaultValue=" + defaultValue +
+                ", type=" + getType() +
+                '}';
     }
 
-    public static class Builder {
+    public static class Builder extends GraphqlTypeBuilder {
 
-        private String name;
         private GraphQLInputType type;
-        private Object defaultValue;
+        private Object defaultValue = DEFAULT_VALUE_SENTINEL;
         private Object value;
-        private String description;
         private InputValueDefinition definition;
         private final Map<String, GraphQLDirective> directives = new LinkedHashMap<>();
 
@@ -167,21 +251,29 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
 
         public Builder(GraphQLArgument existing) {
             this.name = existing.getName();
-            this.type = existing.getType();
+            this.type = existing.originalType;
             this.value = existing.getValue();
-            this.defaultValue = existing.getDefaultValue();
+            this.defaultValue = existing.defaultValue;
             this.description = existing.getDescription();
             this.definition = existing.getDefinition();
             this.directives.putAll(FpKit.getByName(existing.getDirectives(), GraphQLDirective::getName));
         }
 
+        @Override
         public Builder name(String name) {
-            this.name = name;
+            super.name(name);
             return this;
         }
 
+        @Override
         public Builder description(String description) {
-            this.description = description;
+            super.description(description);
+            return this;
+        }
+
+        @Override
+        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
+            super.comparatorRegistry(comparatorRegistry);
             return this;
         }
 
@@ -207,7 +299,7 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
         }
 
         public Builder withDirectives(GraphQLDirective... directives) {
-            assertNotNull(directives, "directives can't be null");
+            assertNotNull(directives, () -> "directives can't be null");
             for (GraphQLDirective directive : directives) {
                 withDirective(directive);
             }
@@ -215,8 +307,17 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
         }
 
         public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, "directive can't be null");
+            assertNotNull(directive, () -> "directive can't be null");
             directives.put(directive.getName(), directive);
+            return this;
+        }
+
+        public Builder replaceDirectives(List<GraphQLDirective> directives) {
+            assertNotNull(directives, () -> "directive can't be null");
+            this.directives.clear();
+            for (GraphQLDirective directive : directives) {
+                this.directives.put(directive.getName(), directive);
+            }
             return this;
         }
 
@@ -236,7 +337,15 @@ public class GraphQLArgument implements GraphQLDirectiveContainer {
 
 
         public GraphQLArgument build() {
-            return new GraphQLArgument(name, description, type, defaultValue, value, definition, valuesToList(directives));
+            return new GraphQLArgument(
+                    name,
+                    description,
+                    type,
+                    defaultValue,
+                    value,
+                    definition,
+                    sort(directives, GraphQLArgument.class, GraphQLDirective.class)
+            );
         }
     }
 }

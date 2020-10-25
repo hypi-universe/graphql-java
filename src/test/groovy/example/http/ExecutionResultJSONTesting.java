@@ -1,29 +1,29 @@
 package example.http;
 
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-
 import graphql.ExceptionWhileDataFetching;
 import graphql.ExecutionResult;
 import graphql.ExecutionResultImpl;
 import graphql.GraphQLError;
 import graphql.InvalidSyntaxError;
 import graphql.SerializationError;
-import graphql.execution.ExecutionPath;
-import graphql.execution.ExecutionTypeInfo;
+import graphql.execution.ExecutionStepInfo;
 import graphql.execution.MissingRootTypeException;
 import graphql.execution.NonNullableFieldWasNullError;
 import graphql.execution.NonNullableFieldWasNullException;
+import graphql.execution.ResultPath;
 import graphql.introspection.Introspection;
 import graphql.language.SourceLocation;
 import graphql.schema.CoercingSerializeException;
 import graphql.validation.ValidationError;
 import graphql.validation.ValidationErrorType;
+
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
@@ -73,7 +73,7 @@ public class ExecutionResultJSONTesting {
         errors.add(new ValidationError(ValidationErrorType.UnknownType, mkLocations(), "Test ValidationError"));
         errors.add(new MissingRootTypeException("Mutations are not supported.", null));
         errors.add(new InvalidSyntaxError(mkLocations(), "Not good syntax m'kay"));
-        errors.add(new NonNullableFieldWasNullError(new NonNullableFieldWasNullException(mkTypeInfo(), mkPath())));
+        errors.add(new NonNullableFieldWasNullError(new NonNullableFieldWasNullException(mkExecutionInfo(), mkPath())));
         errors.add(new SerializationError(mkPath(), new CoercingSerializeException("Bad coercing")));
         errors.add(new ExceptionWhileDataFetching(mkPath(), new RuntimeException("Bang"), mkLocation(666, 999)));
 
@@ -88,12 +88,12 @@ public class ExecutionResultJSONTesting {
         return new SourceLocation(line, column);
     }
 
-    private ExecutionPath mkPath() {
-        return ExecutionPath.rootPath().segment("heroes").segment(0).segment("abilities").segment("speed").segment(4);
+    private ResultPath mkPath() {
+        return ResultPath.rootPath().segment("heroes").segment(0).segment("abilities").segment("speed").segment(4);
     }
 
-    private ExecutionTypeInfo mkTypeInfo() {
-        return ExecutionTypeInfo.newTypeInfo()
+    private ExecutionStepInfo mkExecutionInfo() {
+        return ExecutionStepInfo.newExecutionStepInfo()
                 .type(Introspection.__Schema)
                 .path(mkPath())
                 .build();

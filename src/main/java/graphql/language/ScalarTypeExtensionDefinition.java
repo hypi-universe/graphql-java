@@ -4,24 +4,29 @@ import graphql.Internal;
 import graphql.PublicApi;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
 
 @PublicApi
 public class ScalarTypeExtensionDefinition extends ScalarTypeDefinition {
 
     @Internal
     protected ScalarTypeExtensionDefinition(String name,
-                                          List<Directive> directives,
-                                          Description description,
-                                          SourceLocation sourceLocation,
-                                          List<Comment> comments) {
-        super(name, directives, description, sourceLocation, comments);
+                                            List<Directive> directives,
+                                            Description description,
+                                            SourceLocation sourceLocation,
+                                            List<Comment> comments,
+                                            IgnoredChars ignoredChars, Map<String, String> additionalData) {
+        super(name, directives, description, sourceLocation, comments, ignoredChars, additionalData);
     }
 
     @Override
     public ScalarTypeExtensionDefinition deepCopy() {
-        return new ScalarTypeExtensionDefinition(getName(), deepCopy(getDirectives()), getDescription(), getSourceLocation(), getComments());
+        return new ScalarTypeExtensionDefinition(getName(), deepCopy(getDirectives()), getDescription(), getSourceLocation(), getComments(), getIgnoredChars(), getAdditionalData());
     }
 
     @Override
@@ -37,18 +42,27 @@ public class ScalarTypeExtensionDefinition extends ScalarTypeDefinition {
         return new Builder();
     }
 
+    @Override
+    public ScalarTypeExtensionDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transformExtension(builder -> builder
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+        );
+    }
+
     public ScalarTypeExtensionDefinition transformExtension(Consumer<Builder> builderConsumer) {
         Builder builder = new Builder(this);
         builderConsumer.accept(builder);
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private String name;
         private Description description;
         private List<Directive> directives = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -60,6 +74,8 @@ public class ScalarTypeExtensionDefinition extends ScalarTypeDefinition {
             this.name = existing.getName();
             this.description = existing.getDescription();
             this.directives = existing.getDirectives();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
 
@@ -83,18 +99,36 @@ public class ScalarTypeExtensionDefinition extends ScalarTypeDefinition {
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public ScalarTypeExtensionDefinition build() {
-            ScalarTypeExtensionDefinition scalarTypeDefinition = new ScalarTypeExtensionDefinition(name,
+            return new ScalarTypeExtensionDefinition(name,
                     directives,
                     description,
                     sourceLocation,
-                    comments);
-            return scalarTypeDefinition;
+                    comments,
+                    ignoredChars,
+                    additionalData);
         }
     }
 }

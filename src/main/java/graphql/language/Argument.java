@@ -7,18 +7,27 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static java.util.Collections.emptyMap;
 
 @PublicApi
 public class Argument extends AbstractNode<Argument> implements NamedNode<Argument> {
 
-    private String name;
-    private Value value;
+    private final String name;
+    private final Value value;
+
+    public static final String CHILD_VALUE = "value";
 
     @Internal
-    protected Argument(String name, Value value, SourceLocation sourceLocation, List<Comment> comments) {
-        super(sourceLocation, comments);
+    protected Argument(String name, Value value, SourceLocation sourceLocation, List<Comment> comments, IgnoredChars ignoredChars, Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData);
         this.name = name;
         this.value = value;
     }
@@ -26,11 +35,11 @@ public class Argument extends AbstractNode<Argument> implements NamedNode<Argume
     /**
      * alternative to using a Builder for convenience
      *
-     * @param name
-     * @param value
+     * @param name  of the argument
+     * @param value of the argument
      */
     public Argument(String name, Value value) {
-        this(name, value, null, new ArrayList<>());
+        this(name, value, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
     @Override
@@ -42,14 +51,6 @@ public class Argument extends AbstractNode<Argument> implements NamedNode<Argume
         return value;
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public void setValue(Value value) {
-        this.value = value;
-    }
-
     @Override
     public List<Node> getChildren() {
         List<Node> result = new ArrayList<>();
@@ -57,21 +58,38 @@ public class Argument extends AbstractNode<Argument> implements NamedNode<Argume
         return result;
     }
 
+    @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .child(CHILD_VALUE, value)
+                .build();
+    }
+
+    @Override
+    public Argument withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder
+                .value(newChildren.getChildOrNull(CHILD_VALUE))
+        );
+    }
 
     @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         Argument that = (Argument) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
 
     }
 
     @Override
     public Argument deepCopy() {
-        return new Argument(name, deepCopy(value), getSourceLocation(), getComments());
+        return new Argument(name, deepCopy(value), getSourceLocation(), getComments(), getIgnoredChars(), getAdditionalData());
     }
 
     @Override
@@ -106,6 +124,8 @@ public class Argument extends AbstractNode<Argument> implements NamedNode<Argume
         private List<Comment> comments = new ArrayList<>();
         private String name;
         private Value value;
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -115,6 +135,8 @@ public class Argument extends AbstractNode<Argument> implements NamedNode<Argume
             this.comments = existing.getComments();
             this.name = existing.getName();
             this.value = existing.getValue();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -137,9 +159,23 @@ public class Argument extends AbstractNode<Argument> implements NamedNode<Argume
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
         public Argument build() {
-            Argument argument = new Argument(name, value, sourceLocation, comments);
-            return argument;
+            return new Argument(name, value, sourceLocation, comments, ignoredChars, additionalData);
         }
     }
 }

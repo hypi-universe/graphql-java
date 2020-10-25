@@ -6,7 +6,7 @@ import graphql.PublicApi;
 import graphql.execution.Async;
 import graphql.execution.ExecutionContext;
 import graphql.execution.FieldValueInfo;
-import graphql.execution.instrumentation.parameters.InstrumentationDeferredFieldParameters;
+import graphql.execution.instrumentation.parameters.InstrumentationCreateStateParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationExecuteOperationParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionStrategyParameters;
@@ -15,11 +15,11 @@ import graphql.execution.instrumentation.parameters.InstrumentationFieldFetchPar
 import graphql.execution.instrumentation.parameters.InstrumentationFieldParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationValidationParameters;
 import graphql.language.Document;
-import graphql.language.Field;
 import graphql.schema.DataFetcher;
 import graphql.schema.GraphQLSchema;
 import graphql.validation.ValidationError;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,14 +48,25 @@ public class ChainedInstrumentation implements Instrumentation {
         this.instrumentations = Collections.unmodifiableList(assertNotNull(instrumentations));
     }
 
+    public ChainedInstrumentation(Instrumentation... instrumentations) {
+        this(Arrays.asList(instrumentations));
+    }
+
+    /**
+     * @return the list of instrumentations in play
+     */
+    public List<Instrumentation> getInstrumentations() {
+        return instrumentations;
+    }
+
     private InstrumentationState getState(Instrumentation instrumentation, InstrumentationState parametersInstrumentationState) {
         ChainedInstrumentationState chainedInstrumentationState = (ChainedInstrumentationState) parametersInstrumentationState;
         return chainedInstrumentationState.getState(instrumentation);
     }
 
     @Override
-    public InstrumentationState createState() {
-        return new ChainedInstrumentationState(instrumentations);
+    public InstrumentationState createState(InstrumentationCreateStateParameters parameters) {
+        return new ChainedInstrumentationState(instrumentations, parameters);
     }
 
     @Override
@@ -108,12 +119,13 @@ public class ChainedInstrumentation implements Instrumentation {
                 .collect(toList()));
     }
 
+
     @Override
-    public DeferredFieldInstrumentationContext beginDeferredField(InstrumentationDeferredFieldParameters parameters) {
-        return new ChainedDeferredExecutionStrategyInstrumentationContext(instrumentations.stream()
+    public InstrumentationContext<ExecutionResult> beginSubscribedFieldEvent(InstrumentationFieldParameters parameters) {
+        return new ChainedInstrumentationContext<>(instrumentations.stream()
                 .map(instrumentation -> {
                     InstrumentationState state = getState(instrumentation, parameters.getInstrumentationState());
-                    return instrumentation.beginDeferredField(parameters.withNewState(state));
+                    return instrumentation.beginSubscribedFieldEvent(parameters.withNewState(state));
                 })
                 .collect(toList()));
     }
@@ -168,6 +180,15 @@ public class ChainedInstrumentation implements Instrumentation {
     }
 
     @Override
+    public DocumentAndVariables instrumentDocumentAndVariables(DocumentAndVariables documentAndVariables, InstrumentationExecutionParameters parameters) {
+        for (Instrumentation instrumentation : instrumentations) {
+            InstrumentationState state = getState(instrumentation, parameters.getInstrumentationState());
+            documentAndVariables = instrumentation.instrumentDocumentAndVariables(documentAndVariables, parameters.withNewState(state));
+        }
+        return documentAndVariables;
+    }
+
+    @Override
     public GraphQLSchema instrumentSchema(GraphQLSchema schema, InstrumentationExecutionParameters parameters) {
         for (Instrumentation instrumentation : instrumentations) {
             InstrumentationState state = getState(instrumentation, parameters.getInstrumentationState());
@@ -208,9 +229,9 @@ public class ChainedInstrumentation implements Instrumentation {
         private final Map<Instrumentation, InstrumentationState> instrumentationStates;
 
 
-        private ChainedInstrumentationState(List<Instrumentation> instrumentations) {
+        private ChainedInstrumentationState(List<Instrumentation> instrumentations, InstrumentationCreateStateParameters parameters) {
             instrumentationStates = new LinkedHashMap<>(instrumentations.size());
-            instrumentations.forEach(i -> instrumentationStates.put(i, i.createState()));
+            instrumentations.forEach(i -> instrumentationStates.put(i, i.createState(parameters)));
         }
 
         private InstrumentationState getState(Instrumentation instrumentation) {
@@ -261,34 +282,7 @@ public class ChainedInstrumentation implements Instrumentation {
             contexts.forEach(context -> context.onFieldValuesInfo(fieldValueInfoList));
         }
 
-        @Override
-        public void onDeferredField(List<Field> field) {
-            contexts.forEach(context -> context.onDeferredField(field));
-        }
     }
 
-    private static class ChainedDeferredExecutionStrategyInstrumentationContext implements DeferredFieldInstrumentationContext {
-
-        private final List<DeferredFieldInstrumentationContext> contexts;
-
-        ChainedDeferredExecutionStrategyInstrumentationContext(List<DeferredFieldInstrumentationContext> contexts) {
-            this.contexts = Collections.unmodifiableList(contexts);
-        }
-
-        @Override
-        public void onDispatched(CompletableFuture<ExecutionResult> result) {
-            contexts.forEach(context -> context.onDispatched(result));
-        }
-
-        @Override
-        public void onCompleted(ExecutionResult result, Throwable t) {
-            contexts.forEach(context -> context.onCompleted(result, t));
-        }
-
-        @Override
-        public void onFieldValueInfo(FieldValueInfo fieldValueInfo) {
-            contexts.forEach(context -> context.onFieldValueInfo(fieldValueInfo));
-        }
-    }
 }
 

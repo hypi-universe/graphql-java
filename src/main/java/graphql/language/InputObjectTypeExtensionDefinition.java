@@ -4,20 +4,26 @@ import graphql.Internal;
 import graphql.PublicApi;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
 
 @PublicApi
 public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinition {
 
     @Internal
     protected InputObjectTypeExtensionDefinition(String name,
-                                               List<Directive> directives,
-                                               List<InputValueDefinition> inputValueDefinitions,
-                                               Description description,
-                                               SourceLocation sourceLocation,
-                                               List<Comment> comments) {
-        super(name, directives, inputValueDefinitions, description, sourceLocation, comments);
+                                                 List<Directive> directives,
+                                                 List<InputValueDefinition> inputValueDefinitions,
+                                                 Description description,
+                                                 SourceLocation sourceLocation,
+                                                 List<Comment> comments,
+                                                 IgnoredChars ignoredChars,
+                                                 Map<String, String> additionalData) {
+        super(name, directives, inputValueDefinitions, description, sourceLocation, comments, ignoredChars, additionalData);
     }
 
     @Override
@@ -27,7 +33,9 @@ public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinitio
                 deepCopy(getInputValueDefinitions()),
                 getDescription(),
                 getSourceLocation(),
-                getComments());
+                getComments(),
+                getIgnoredChars(),
+                getAdditionalData());
     }
 
     @Override
@@ -43,6 +51,13 @@ public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinitio
         return new Builder();
     }
 
+    @Override
+    public InputObjectTypeExtensionDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transformExtension(builder -> builder
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+                .inputValueDefinitions(newChildren.getChildren(CHILD_INPUT_VALUES_DEFINITIONS))
+        );
+    }
 
     public InputObjectTypeExtensionDefinition transformExtension(Consumer<Builder> builderConsumer) {
         Builder builder = new Builder(this);
@@ -50,13 +65,15 @@ public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinitio
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private String name;
         private Description description;
         private List<Directive> directives = new ArrayList<>();
         private List<InputValueDefinition> inputValueDefinitions = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -68,6 +85,8 @@ public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinitio
             this.description = existing.getDescription();
             this.directives = existing.getDirectives();
             this.inputValueDefinitions = existing.getInputValueDefinitions();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
 
@@ -91,6 +110,7 @@ public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinitio
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
@@ -101,13 +121,30 @@ public class InputObjectTypeExtensionDefinition extends InputObjectTypeDefinitio
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public InputObjectTypeExtensionDefinition build() {
             InputObjectTypeExtensionDefinition inputObjectTypeDefinition = new InputObjectTypeExtensionDefinition(name,
                     directives,
                     inputValueDefinitions,
                     description,
                     sourceLocation,
-                    comments);
+                    comments,
+                    ignoredChars, additionalData);
             return inputObjectTypeDefinition;
         }
     }

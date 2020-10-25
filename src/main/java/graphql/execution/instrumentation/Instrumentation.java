@@ -2,8 +2,9 @@ package graphql.execution.instrumentation;
 
 import graphql.ExecutionInput;
 import graphql.ExecutionResult;
+import graphql.PublicSpi;
 import graphql.execution.ExecutionContext;
-import graphql.execution.instrumentation.parameters.InstrumentationDeferredFieldParameters;
+import graphql.execution.instrumentation.parameters.InstrumentationCreateStateParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationExecuteOperationParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionParameters;
 import graphql.execution.instrumentation.parameters.InstrumentationExecutionStrategyParameters;
@@ -19,6 +20,8 @@ import graphql.validation.ValidationError;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
+import static graphql.execution.instrumentation.SimpleInstrumentationContext.noOp;
+
 /**
  * Provides the capability to instrument the execution steps of a GraphQL query.
  *
@@ -32,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
  * one for the step is `dispatched` and one for when the step has `completed`.  This is done because many of the "steps" are asynchronous
  * operations such as fetching data and resolving it into objects.
  */
+@PublicSpi
 public interface Instrumentation {
 
     /**
@@ -42,6 +46,18 @@ public interface Instrumentation {
      */
     default InstrumentationState createState() {
         return null;
+    }
+
+    /**
+     * This will be called just before execution to create an object that is given back to all instrumentation methods
+     * to allow them to have per execution request state
+     *
+     * @param parameters the parameters to this step
+     *
+     * @return a state object that is passed to each method
+     */
+    default InstrumentationState createState(InstrumentationCreateStateParameters parameters) {
+        return createState();
     }
 
     /**
@@ -90,14 +106,17 @@ public interface Instrumentation {
      */
     ExecutionStrategyInstrumentationContext beginExecutionStrategy(InstrumentationExecutionStrategyParameters parameters);
 
+
     /**
-     * This is called just before a deferred field is resolved into a value.
+     * This is called each time a subscription field produces a new reactive stream event value and it needs to be mapped over via the graphql field subselection.
      *
      * @param parameters the parameters to this step
      *
      * @return a non null {@link InstrumentationContext} object that will be called back when the step ends
      */
-    DeferredFieldInstrumentationContext beginDeferredField(InstrumentationDeferredFieldParameters parameters);
+    default InstrumentationContext<ExecutionResult> beginSubscribedFieldEvent(InstrumentationFieldParameters parameters) {
+        return noOp();
+    }
 
     /**
      * This is called just before a field is resolved into a value.
@@ -126,7 +145,7 @@ public interface Instrumentation {
      * @return a non null {@link InstrumentationContext} object that will be called back when the step ends
      */
     default InstrumentationContext<ExecutionResult> beginFieldComplete(InstrumentationFieldCompleteParameters parameters) {
-        return new SimpleInstrumentationContext<>();
+        return noOp();
     }
 
     /**
@@ -137,7 +156,7 @@ public interface Instrumentation {
      * @return a non null {@link InstrumentationContext} object that will be called back when the step ends
      */
     default InstrumentationContext<ExecutionResult> beginFieldListComplete(InstrumentationFieldCompleteParameters parameters) {
-        return new SimpleInstrumentationContext<>();
+        return noOp();
     }
 
     /**
@@ -151,6 +170,18 @@ public interface Instrumentation {
      */
     default ExecutionInput instrumentExecutionInput(ExecutionInput executionInput, InstrumentationExecutionParameters parameters) {
         return executionInput;
+    }
+
+    /**
+     * This is called to instrument a {@link graphql.language.Document} and variables before it is used allowing you to adjust the query AST if you so desire
+     *
+     * @param documentAndVariables the document and variables to be used
+     * @param parameters           the parameters describing the execution
+     *
+     * @return a non null instrumented DocumentAndVariables, the default is to return to the same objects
+     */
+    default DocumentAndVariables instrumentDocumentAndVariables(DocumentAndVariables documentAndVariables, InstrumentationExecutionParameters parameters) {
+        return documentAndVariables;
     }
 
     /**

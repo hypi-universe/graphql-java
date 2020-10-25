@@ -3,13 +3,15 @@ package graphql.relay;
 import graphql.Assert;
 import graphql.PublicApi;
 
+import java.util.Objects;
+
 @PublicApi
 public class DefaultConnectionCursor implements ConnectionCursor {
 
     private final String value;
 
     public DefaultConnectionCursor(String value) {
-        Assert.assertTrue(value != null && !value.isEmpty(), "connection value cannot be null or empty");
+        Assert.assertTrue(value != null && !value.isEmpty(), () -> "connection value cannot be null or empty");
         this.value = value;
     }
 
@@ -27,7 +29,7 @@ public class DefaultConnectionCursor implements ConnectionCursor {
             return false;
         }
         DefaultConnectionCursor that = (DefaultConnectionCursor) o;
-        return value != null ? value.equals(that.value) : that.value == null;
+        return Objects.equals(value, that.value);
     }
 
     @Override

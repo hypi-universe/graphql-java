@@ -1,14 +1,23 @@
 grammar GraphqlSDL;
 import GraphqlCommon;
 
-typeSystemDefinition: description?
+typeSystemDefinition:
 schemaDefinition |
 typeDefinition |
-typeExtension |
 directiveDefinition
 ;
 
+typeSystemExtension :
+schemaExtension |
+typeExtension
+;
+
 schemaDefinition : description? SCHEMA directives? '{' operationTypeDefinition+ '}';
+
+schemaExtension :
+    EXTEND SCHEMA directives? '{' operationTypeDefinition+ '}' |
+    EXTEND SCHEMA directives+
+;
 
 operationTypeDefinition : description? operationType ':' typeName;
 
@@ -35,14 +44,19 @@ typeExtension :
     inputObjectTypeExtensionDefinition
 ;
 
+emptyParentheses : '{' '}';
 
 scalarTypeDefinition : description? SCALAR name directives?;
 
-scalarTypeExtensionDefinition : EXTEND SCALAR name directives?;
+scalarTypeExtensionDefinition : EXTEND SCALAR name directives;
 
 objectTypeDefinition : description? TYPE name implementsInterfaces? directives? fieldsDefinition?;
 
-objectTypeExtensionDefinition : EXTEND TYPE name implementsInterfaces? directives? fieldsDefinition?;
+objectTypeExtensionDefinition :
+    EXTEND TYPE name implementsInterfaces? directives? extensionFieldsDefinition |
+    EXTEND TYPE name implementsInterfaces? directives emptyParentheses? |
+    EXTEND TYPE name implementsInterfaces
+;
 
 implementsInterfaces :
     IMPLEMENTS '&'? typeName+ |
@@ -50,20 +64,29 @@ implementsInterfaces :
 
 fieldsDefinition : '{' fieldDefinition* '}';
 
+extensionFieldsDefinition : '{' fieldDefinition+ '}';
+
 fieldDefinition : description? name argumentsDefinition? ':' type directives?;
 
 argumentsDefinition : '(' inputValueDefinition+ ')';
 
 inputValueDefinition : description? name ':' type defaultValue? directives?;
 
-interfaceTypeDefinition : description? INTERFACE name directives? fieldsDefinition?;
+interfaceTypeDefinition : description? INTERFACE name implementsInterfaces? directives? fieldsDefinition?;
 
-interfaceTypeExtensionDefinition : EXTEND INTERFACE name directives? fieldsDefinition?;
+interfaceTypeExtensionDefinition :
+    EXTEND INTERFACE name implementsInterfaces? directives? extensionFieldsDefinition |
+    EXTEND INTERFACE name implementsInterfaces? directives emptyParentheses? |
+    EXTEND INTERFACE name implementsInterfaces
+;
 
 
-unionTypeDefinition : description? UNION name directives? unionMembership;
+unionTypeDefinition : description? UNION name directives? unionMembership?;
 
-unionTypeExtensionDefinition : EXTEND UNION name directives? unionMembership?;
+unionTypeExtensionDefinition :
+    EXTEND UNION name directives? unionMembership |
+    EXTEND UNION name directives
+;
 
 unionMembership : '=' unionMembers;
 
@@ -72,20 +95,30 @@ unionMembers:
 unionMembers '|' typeName
 ;
 
-enumTypeDefinition : description? ENUM name directives? enumValueDefinitions;
+enumTypeDefinition : description? ENUM name directives? enumValueDefinitions?;
 
-enumTypeExtensionDefinition : EXTEND ENUM name directives? enumValueDefinitions?;
+enumTypeExtensionDefinition :
+    EXTEND ENUM name directives? extensionEnumValueDefinitions |
+    EXTEND ENUM name directives emptyParentheses?
+;
 
-enumValueDefinitions : '{' enumValueDefinition+ '}';
+enumValueDefinitions : '{' enumValueDefinition* '}';
+
+extensionEnumValueDefinitions : '{' enumValueDefinition+ '}';
 
 enumValueDefinition : description? enumValue directives?;
 
 
-inputObjectTypeDefinition : description? INPUT name directives? inputObjectValueDefinitions;
+inputObjectTypeDefinition : description? INPUT name directives? inputObjectValueDefinitions?;
 
-inputObjectTypeExtensionDefinition : EXTEND INPUT name directives? inputObjectValueDefinitions?;
+inputObjectTypeExtensionDefinition :
+    EXTEND INPUT name directives? extensionInputObjectValueDefinitions |
+    EXTEND INPUT name directives emptyParentheses?
+;
 
-inputObjectValueDefinitions : '{' inputValueDefinition+ '}';
+inputObjectValueDefinitions : '{' inputValueDefinition* '}';
+
+extensionInputObjectValueDefinitions : '{' inputValueDefinition+ '}';
 
 
 directiveDefinition : description? DIRECTIVE '@' name argumentsDefinition? 'on' directiveLocations;

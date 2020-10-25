@@ -7,15 +7,16 @@ import java.util.List;
 import java.util.Map;
 
 import static graphql.language.NodeUtil.directivesByName;
+import static graphql.language.NodeUtil.directiveByName;
 
 /**
- * Represents a language node that has a name
+ * Represents a language node that can contain Directives.
  */
 @PublicApi
-public interface DirectivesContainer<T extends DirectivesContainer> extends NamedNode<T> {
+public interface DirectivesContainer<T extends DirectivesContainer> extends Node<T> {
 
     /**
-     * @return a list of directives associated with the type or field
+     * @return a list of directives associated with this Node
      */
     List<Directive> getDirectives();
 
@@ -27,13 +28,13 @@ public interface DirectivesContainer<T extends DirectivesContainer> extends Name
     }
 
     /**
-     * Returns a named directive
+     * Returns a directive with the provided name
      *
      * @param directiveName the name of the directive to retrieve
      *
      * @return the directive or null if there is one one with that name
      */
     default Directive getDirective(String directiveName) {
-        return getDirectivesByName().get(directiveName);
+        return directiveByName(getDirectives(), directiveName).orElse(null);
     }
 }

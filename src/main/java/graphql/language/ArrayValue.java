@@ -7,28 +7,35 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
+
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static java.util.Collections.emptyMap;
 
 @PublicApi
 public class ArrayValue extends AbstractNode<ArrayValue> implements Value<ArrayValue> {
 
     private final List<Value> values = new ArrayList<>();
 
+    public static final String CHILD_VALUES = "values";
+
     @Internal
-    protected ArrayValue(List<Value> values, SourceLocation sourceLocation, List<Comment> comments) {
-        super(sourceLocation, comments);
+    protected ArrayValue(List<Value> values, SourceLocation sourceLocation, List<Comment> comments, IgnoredChars ignoredChars, Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData);
         this.values.addAll(values);
     }
 
     /**
      * alternative to using a Builder for convenience
      *
-     * @param values
+     * @param values of the array
      */
     public ArrayValue(List<Value> values) {
-        super(null, new ArrayList<>());
-        this.values.addAll(values);
+        this(values, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
     public List<Value> getValues() {
@@ -41,9 +48,27 @@ public class ArrayValue extends AbstractNode<ArrayValue> implements Value<ArrayV
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .children(CHILD_VALUES, values)
+                .build();
+    }
+
+    @Override
+    public ArrayValue withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder
+                .values(newChildren.getChildren(CHILD_VALUES))
+        );
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         return true;
     }
@@ -57,7 +82,7 @@ public class ArrayValue extends AbstractNode<ArrayValue> implements Value<ArrayV
 
     @Override
     public ArrayValue deepCopy() {
-        return new ArrayValue(deepCopy(values), getSourceLocation(), getComments());
+        return new ArrayValue(deepCopy(values), getSourceLocation(), getComments(), getIgnoredChars(), getAdditionalData());
     }
 
     @Override
@@ -79,6 +104,8 @@ public class ArrayValue extends AbstractNode<ArrayValue> implements Value<ArrayV
         private SourceLocation sourceLocation;
         private List<Value> values = new ArrayList<>();
         private List<Comment> comments = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -87,6 +114,8 @@ public class ArrayValue extends AbstractNode<ArrayValue> implements Value<ArrayV
             this.sourceLocation = existing.getSourceLocation();
             this.comments = existing.getComments();
             this.values = existing.getValues();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -109,9 +138,24 @@ public class ArrayValue extends AbstractNode<ArrayValue> implements Value<ArrayV
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
         public ArrayValue build() {
-            ArrayValue arrayValue = new ArrayValue(values, sourceLocation, comments);
-            return arrayValue;
+            return new ArrayValue(values, sourceLocation, comments, ignoredChars, additionalData);
         }
     }
 }

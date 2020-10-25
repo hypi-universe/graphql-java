@@ -1,5 +1,9 @@
 package graphql.execution.batched;
 
+import graphql.PublicApi;
+
+@Deprecated
+@PublicApi
 public class FetchedValue {
 
     private final MapOrList mapOrList;

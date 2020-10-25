@@ -3,25 +3,25 @@ package graphql.schema.validation;
 import graphql.Internal;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.GraphQLFieldsContainer;
+import graphql.schema.GraphQLNamedType;
 import graphql.schema.GraphQLOutputType;
 import graphql.schema.GraphQLSchema;
-import graphql.schema.GraphQLType;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 @Internal
 public class SchemaValidator {
 
-    private final Set<GraphQLOutputType> processed = new HashSet<>();
+    private final Set<GraphQLOutputType> processed = new LinkedHashSet<>();
 
     private List<SchemaValidationRule> rules = new ArrayList<>();
 
     public SchemaValidator() {
         rules.add(new NoUnbrokenInputCycles());
-        rules.add(new ObjectsImplementInterfaces());
+        rules.add(new TypesImplementInterfaces());
     }
 
     SchemaValidator(List<SchemaValidationRule> rules) {
@@ -48,7 +48,7 @@ public class SchemaValidator {
     }
 
     private void checkTypes(GraphQLSchema schema, SchemaValidationErrorCollector validationErrorCollector) {
-        List<GraphQLType> types = schema.getAllTypesAsList();
+        List<GraphQLNamedType> types = schema.getAllTypesAsList();
         types.forEach(type -> {
             for (SchemaValidationRule rule : rules) {
                 rule.check(type, validationErrorCollector);

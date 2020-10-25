@@ -7,40 +7,54 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static java.util.Collections.emptyMap;
+
 @PublicApi
-public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> implements TypeDefinition<ObjectTypeDefinition>, DirectivesContainer<ObjectTypeDefinition> {
+public class ObjectTypeDefinition extends AbstractDescribedNode<ObjectTypeDefinition> implements ImplementingTypeDefinition<ObjectTypeDefinition>, DirectivesContainer<ObjectTypeDefinition>, NamedNode<ObjectTypeDefinition> {
     private final String name;
-    private final Description description;
     private final List<Type> implementz;
     private final List<Directive> directives;
     private final List<FieldDefinition> fieldDefinitions;
 
+    public static final String CHILD_IMPLEMENTZ = "implementz";
+    public static final String CHILD_DIRECTIVES = "directives";
+    public static final String CHILD_FIELD_DEFINITIONS = "fieldDefinitions";
+
     @Internal
     protected ObjectTypeDefinition(String name,
-                         List<Type> implementz,
-                         List<Directive> directives,
-                         List<FieldDefinition> fieldDefinitions,
-                         Description description,
-                         SourceLocation sourceLocation,
-                         List<Comment> comments) {
-        super(sourceLocation, comments);
+                                   List<Type> implementz,
+                                   List<Directive> directives,
+                                   List<FieldDefinition> fieldDefinitions,
+                                   Description description,
+                                   SourceLocation sourceLocation,
+                                   List<Comment> comments,
+                                   IgnoredChars ignoredChars,
+                                   Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData, description);
         this.name = name;
         this.implementz = implementz;
         this.directives = directives;
         this.fieldDefinitions = fieldDefinitions;
-        this.description = description;
     }
 
     /**
      * alternative to using a Builder for convenience
+     *
+     * @param name of the object type
      */
     public ObjectTypeDefinition(String name) {
-        this(name, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), null, null, new ArrayList<>());
+        this(name, new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), null, null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
+    @Override
     public List<Type> getImplements() {
         return new ArrayList<>(implementz);
     }
@@ -50,17 +64,14 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
         return new ArrayList<>(directives);
     }
 
+    @Override
     public List<FieldDefinition> getFieldDefinitions() {
-        return fieldDefinitions;
+        return new ArrayList<>(fieldDefinitions);
     }
 
     @Override
     public String getName() {
         return name;
-    }
-
-    public Description getDescription() {
-        return description;
     }
 
     @Override
@@ -73,12 +84,33 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .children(CHILD_IMPLEMENTZ, implementz)
+                .children(CHILD_DIRECTIVES, directives)
+                .children(CHILD_FIELD_DEFINITIONS, fieldDefinitions)
+                .build();
+    }
+
+    @Override
+    public ObjectTypeDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder.implementz(newChildren.getChildren(CHILD_IMPLEMENTZ))
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+                .fieldDefinitions(newChildren.getChildren(CHILD_FIELD_DEFINITIONS)));
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         ObjectTypeDefinition that = (ObjectTypeDefinition) o;
-        return NodeUtil.isEqualTo(this.name, that.name);
+
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
@@ -89,8 +121,9 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
                 deepCopy(fieldDefinitions),
                 description,
                 getSourceLocation(),
-                getComments()
-        );
+                getComments(),
+                getIgnoredChars(),
+                getAdditionalData());
     }
 
     @Override
@@ -118,7 +151,7 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
         return builder.build();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private String name;
@@ -126,6 +159,8 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
         private List<Type> implementz = new ArrayList<>();
         private List<Directive> directives = new ArrayList<>();
         private List<FieldDefinition> fieldDefinitions = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -138,6 +173,8 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
             this.directives = existing.getDirectives();
             this.implementz = existing.getImplements();
             this.fieldDefinitions = existing.getFieldDefinitions();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -170,6 +207,7 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
@@ -190,15 +228,31 @@ public class ObjectTypeDefinition extends AbstractNode<ObjectTypeDefinition> imp
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
         public ObjectTypeDefinition build() {
-            ObjectTypeDefinition objectTypeDefinition = new ObjectTypeDefinition(name,
+            return new ObjectTypeDefinition(name,
                     implementz,
                     directives,
                     fieldDefinitions,
                     description,
                     sourceLocation,
-                    comments);
-            return objectTypeDefinition;
+                    comments,
+                    ignoredChars,
+                    additionalData);
         }
     }
 }

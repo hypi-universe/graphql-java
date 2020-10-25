@@ -1,20 +1,25 @@
 package graphql.execution;
 
 
+import graphql.ExecutionInput;
 import graphql.GraphQLError;
 import graphql.PublicApi;
-import graphql.execution.defer.DeferSupport;
+import graphql.cachecontrol.CacheControl;
 import graphql.execution.instrumentation.Instrumentation;
 import graphql.execution.instrumentation.InstrumentationState;
 import graphql.language.Document;
 import graphql.language.FragmentDefinition;
 import graphql.language.OperationDefinition;
 import graphql.schema.GraphQLSchema;
+import org.dataloader.DataLoaderRegistry;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Set;
+import java.util.ArrayList;
 import java.util.function.Consumer;
 
 @SuppressWarnings("TypeParameterUnusedInFormals")
@@ -33,34 +38,46 @@ public class ExecutionContext {
     private final Map<String, Object> variables;
     private final Object root;
     private final Object context;
+    private final Object localContext;
     private final Instrumentation instrumentation;
-    private final List<GraphQLError> errors = new CopyOnWriteArrayList<>();
-    private final DeferSupport deferSupport = new DeferSupport();
+    private final List<GraphQLError> errors = Collections.synchronizedList(new ArrayList<>());
+    private final Set<ResultPath> errorPaths = new HashSet<>();
+    private final DataLoaderRegistry dataLoaderRegistry;
+    private final CacheControl cacheControl;
+    private final Locale locale;
+    private final ValueUnboxer valueUnboxer;
+    private final ExecutionInput executionInput;
 
-    public ExecutionContext(Instrumentation instrumentation, ExecutionId executionId, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState, ExecutionStrategy queryStrategy, ExecutionStrategy mutationStrategy, ExecutionStrategy subscriptionStrategy, Map<String, FragmentDefinition> fragmentsByName, Document document, OperationDefinition operationDefinition, Map<String, Object> variables, Object context, Object root) {
-        this(instrumentation, executionId, graphQLSchema, instrumentationState, queryStrategy, mutationStrategy, subscriptionStrategy, fragmentsByName, document, operationDefinition, variables, context, root, Collections.emptyList());
-    }
-
-    ExecutionContext(Instrumentation instrumentation, ExecutionId executionId, GraphQLSchema graphQLSchema, InstrumentationState instrumentationState, ExecutionStrategy queryStrategy, ExecutionStrategy mutationStrategy, ExecutionStrategy subscriptionStrategy, Map<String, FragmentDefinition> fragmentsByName, Document document, OperationDefinition operationDefinition, Map<String, Object> variables, Object context, Object root, List<GraphQLError> startingErrors) {
-        this.graphQLSchema = graphQLSchema;
-        this.executionId = executionId;
-        this.instrumentationState = instrumentationState;
-        this.queryStrategy = queryStrategy;
-        this.mutationStrategy = mutationStrategy;
-        this.subscriptionStrategy = subscriptionStrategy;
-        this.fragmentsByName = fragmentsByName;
-        this.document = document;
-        this.operationDefinition = operationDefinition;
-        this.variables = variables;
-        this.context = context;
-        this.root = root;
-        this.instrumentation = instrumentation;
-        this.errors.addAll(startingErrors);
+    ExecutionContext(ExecutionContextBuilder builder) {
+        this.graphQLSchema = builder.graphQLSchema;
+        this.executionId = builder.executionId;
+        this.instrumentationState = builder.instrumentationState;
+        this.queryStrategy = builder.queryStrategy;
+        this.mutationStrategy = builder.mutationStrategy;
+        this.subscriptionStrategy = builder.subscriptionStrategy;
+        this.fragmentsByName = Collections.unmodifiableMap(builder.fragmentsByName);
+        this.variables = Collections.unmodifiableMap(builder.variables);
+        this.document = builder.document;
+        this.operationDefinition = builder.operationDefinition;
+        this.context = builder.context;
+        this.root = builder.root;
+        this.instrumentation = builder.instrumentation;
+        this.dataLoaderRegistry = builder.dataLoaderRegistry;
+        this.cacheControl = builder.cacheControl;
+        this.locale = builder.locale;
+        this.valueUnboxer = builder.valueUnboxer;
+        this.errors.addAll(builder.errors);
+        this.localContext = builder.localContext;
+        this.executionInput = builder.executionInput;
     }
 
 
     public ExecutionId getExecutionId() {
         return executionId;
+    }
+
+    public ExecutionInput getExecutionInput() {
+        return executionInput;
     }
 
     public InstrumentationState getInstrumentationState() {
@@ -91,8 +108,13 @@ public class ExecutionContext {
         return variables;
     }
 
-    public Object getContext() {
-        return context;
+    @SuppressWarnings("unchecked")
+    public <T> T getContext() {
+        return (T) context;
+    }
+    @SuppressWarnings("unchecked")
+    public <T> T getLocalContext() {
+        return (T) localContext;
     }
 
     @SuppressWarnings("unchecked")
@@ -104,25 +126,36 @@ public class ExecutionContext {
         return fragmentsByName.get(name);
     }
 
+    public DataLoaderRegistry getDataLoaderRegistry() {
+        return dataLoaderRegistry;
+    }
+
+    public CacheControl getCacheControl() {
+        return cacheControl;
+    }
+
+    public Locale getLocale() {
+        return locale;
+    }
+
+    public ValueUnboxer getValueUnboxer() {
+        return valueUnboxer;
+    }
+
     /**
      * This method will only put one error per field path.
      *
      * @param error     the error to add
      * @param fieldPath the field path to put it under
      */
-    public void addError(GraphQLError error, ExecutionPath fieldPath) {
+    public void addError(GraphQLError error, ResultPath fieldPath) {
         //
         // see http://facebook.github.io/graphql/#sec-Errors-and-Non-Nullability about how per
         // field errors should be handled - ie only once per field if its already there for nullability
         // but unclear if its not that error path
         //
-        for (GraphQLError graphQLError : errors) {
-            List<Object> path = graphQLError.getPath();
-            if (path != null) {
-                if (fieldPath.equals(ExecutionPath.fromList(path))) {
-                    return;
-                }
-            }
+        if (!errorPaths.add(fieldPath)) {
+            return;
         }
         this.errors.add(error);
     }
@@ -137,6 +170,9 @@ public class ExecutionContext {
         // see https://github.com/graphql-java/graphql-java/issues/888 on how the spec is unclear
         // on how exactly multiple errors should be handled - ie only once per field or not outside the nullability
         // aspect.
+        if (error.getPath() != null) {
+            this.errorPaths.add(ResultPath.fromList(error.getPath()));
+        }
         this.errors.add(error);
     }
 
@@ -157,10 +193,6 @@ public class ExecutionContext {
 
     public ExecutionStrategy getSubscriptionStrategy() {
         return subscriptionStrategy;
-    }
-
-    public DeferSupport getDeferSupport() {
-        return deferSupport;
     }
 
     /**

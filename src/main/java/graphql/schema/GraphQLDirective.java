@@ -1,8 +1,10 @@
 package graphql.schema;
 
 
-import graphql.Assert;
 import graphql.PublicApi;
+import graphql.language.DirectiveDefinition;
+import graphql.util.TraversalControl;
+import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,7 +19,6 @@ import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertValidName;
 import static graphql.introspection.Introspection.DirectiveLocation;
 import static graphql.util.FpKit.getByName;
-import static graphql.util.FpKit.valuesToList;
 
 /**
  * A directive can be used to modify the behavior of a graphql field or type.
@@ -26,29 +27,43 @@ import static graphql.util.FpKit.valuesToList;
  */
 @SuppressWarnings("DeprecatedIsStillUsed") // because the graphql spec still has some of these deprecated fields
 @PublicApi
-public class GraphQLDirective {
+public class GraphQLDirective implements GraphQLNamedSchemaElement {
 
     private final String name;
     private final String description;
     private final EnumSet<DirectiveLocation> locations;
     private final List<GraphQLArgument> arguments = new ArrayList<>();
-    private final boolean onOperation;
-    private final boolean onFragment;
-    private final boolean onField;
+    private final DirectiveDefinition definition;
 
-    public GraphQLDirective(String name, String description, EnumSet<DirectiveLocation> locations,
-                            List<GraphQLArgument> arguments, boolean onOperation, boolean onFragment, boolean onField) {
+
+    public static final String CHILD_ARGUMENTS = "arguments";
+
+    /**
+     * @deprecated Use the Builder
+     */
+    @Deprecated
+    public GraphQLDirective(String name,
+                            String description,
+                            EnumSet<DirectiveLocation> locations,
+                            List<GraphQLArgument> arguments) {
+        this(name, description, locations, arguments, null);
+    }
+
+    private GraphQLDirective(String name,
+                             String description,
+                             EnumSet<DirectiveLocation> locations,
+                             List<GraphQLArgument> arguments,
+                             DirectiveDefinition definition) {
         assertValidName(name);
-        assertNotNull(arguments, "arguments can't be null");
+        assertNotNull(arguments, () -> "arguments can't be null");
         this.name = name;
         this.description = description;
         this.locations = locations;
         this.arguments.addAll(arguments);
-        this.onOperation = onOperation;
-        this.onFragment = onFragment;
-        this.onField = onField;
+        this.definition = definition;
     }
 
+    @Override
     public String getName() {
         return name;
     }
@@ -59,47 +74,23 @@ public class GraphQLDirective {
 
     public GraphQLArgument getArgument(String name) {
         for (GraphQLArgument argument : arguments) {
-            if (argument.getName().equals(name)) return argument;
+            if (argument.getName().equals(name)) {
+                return argument;
+            }
         }
         return null;
     }
 
     public EnumSet<DirectiveLocation> validLocations() {
-        return locations;
-    }
-
-    /**
-     * @return onOperation
-     *
-     * @deprecated Use {@link #validLocations()}
-     */
-    @Deprecated
-    public boolean isOnOperation() {
-        return onOperation;
-    }
-
-    /**
-     * @return onFragment
-     *
-     * @deprecated Use {@link #validLocations()}
-     */
-    @Deprecated
-    public boolean isOnFragment() {
-        return onFragment;
-    }
-
-    /**
-     * @return onField
-     *
-     * @deprecated Use {@link #validLocations()}
-     */
-    @Deprecated
-    public boolean isOnField() {
-        return onField;
+        return EnumSet.copyOf(locations);
     }
 
     public String getDescription() {
         return description;
+    }
+
+    public DirectiveDefinition getDefinition() {
+        return definition;
     }
 
     @Override
@@ -125,6 +116,46 @@ public class GraphQLDirective {
         return builder.build();
     }
 
+    @Override
+    public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
+        return visitor.visitGraphQLDirective(this, context);
+    }
+
+    @Override
+    public List<GraphQLSchemaElement> getChildren() {
+        return new ArrayList<>(arguments);
+    }
+
+    @Override
+    public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
+        return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
+                .children(CHILD_ARGUMENTS, arguments)
+                .build();
+    }
+
+    @Override
+    public GraphQLDirective withNewChildren(SchemaElementChildrenContainer newChildren) {
+        return transform(builder ->
+                builder.replaceArguments(newChildren.getChildren(CHILD_ARGUMENTS))
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
+    }
+
 
     public static Builder newDirective() {
         return new Builder();
@@ -134,15 +165,11 @@ public class GraphQLDirective {
         return new Builder(existing);
     }
 
-    public static class Builder {
+    public static class Builder extends GraphqlTypeBuilder {
 
-        private String name;
-        private String description;
-        private boolean onOperation;
-        private boolean onFragment;
-        private boolean onField;
         private EnumSet<DirectiveLocation> locations = EnumSet.noneOf(DirectiveLocation.class);
         private final Map<String, GraphQLArgument> arguments = new LinkedHashMap<>();
+        private DirectiveDefinition definition;
 
         public Builder() {
         }
@@ -151,20 +178,25 @@ public class GraphQLDirective {
         public Builder(GraphQLDirective existing) {
             this.name = existing.getName();
             this.description = existing.getDescription();
-            this.onOperation = existing.isOnOperation();
-            this.onFragment = existing.isOnFragment();
-            this.onField = existing.isOnField();
             this.locations = existing.validLocations();
             this.arguments.putAll(getByName(existing.getArguments(), GraphQLArgument::getName));
         }
 
+        @Override
         public Builder name(String name) {
-            this.name = name;
+            super.name(name);
             return this;
         }
 
+        @Override
         public Builder description(String description) {
-            this.description = description;
+            super.description(description);
+            return this;
+        }
+
+        @Override
+        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
+            super.comparatorRegistry(comparatorRegistry);
             return this;
         }
 
@@ -184,8 +216,17 @@ public class GraphQLDirective {
         }
 
         public Builder argument(GraphQLArgument argument) {
-            Assert.assertNotNull(argument, "argument must not be null");
+            assertNotNull(argument, () -> "argument must not be null");
             arguments.put(argument.getName(), argument);
+            return this;
+        }
+
+        public Builder replaceArguments(List<GraphQLArgument> arguments) {
+            assertNotNull(arguments, () -> "arguments must not be null");
+            this.arguments.clear();
+            for (GraphQLArgument argument : arguments) {
+                this.arguments.put(argument.getName(), argument);
+            }
             return this;
         }
 
@@ -231,47 +272,18 @@ public class GraphQLDirective {
         }
 
 
-        /**
-         * @param onOperation onOperation
-         *
-         * @return this builder
-         *
-         * @deprecated Use {@code graphql.schema.GraphQLDirective.Builder#validLocations(DirectiveLocation...)}
-         */
-        @Deprecated
-        public Builder onOperation(boolean onOperation) {
-            this.onOperation = onOperation;
-            return this;
-        }
-
-        /**
-         * @param onFragment onFragment
-         *
-         * @return this builder
-         *
-         * @deprecated Use {@code graphql.schema.GraphQLDirective.Builder#validLocations(DirectiveLocation...)}
-         */
-        @Deprecated
-        public Builder onFragment(boolean onFragment) {
-            this.onFragment = onFragment;
-            return this;
-        }
-
-        /**
-         * @param onField onField
-         *
-         * @return this builder
-         *
-         * @deprecated Use {@code graphql.schema.GraphQLDirective.Builder#validLocations(DirectiveLocation...)}
-         */
-        @Deprecated
-        public Builder onField(boolean onField) {
-            this.onField = onField;
+        public Builder definition(DirectiveDefinition definition) {
+            this.definition = definition;
             return this;
         }
 
         public GraphQLDirective build() {
-            return new GraphQLDirective(name, description, locations, valuesToList(arguments), onOperation, onFragment, onField);
+            return new GraphQLDirective(
+                    name,
+                    description,
+                    locations,
+                    sort(arguments, GraphQLDirective.class, GraphQLArgument.class),
+                    definition);
         }
 
 

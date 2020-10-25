@@ -7,24 +7,35 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
+import static java.util.Collections.emptyMap;
+
 @PublicApi
-public class DirectiveDefinition extends AbstractNode<DirectiveDefinition> implements SDLDefinition<DirectiveDefinition>, NamedNode<DirectiveDefinition> {
+public class DirectiveDefinition extends AbstractDescribedNode<DirectiveDefinition> implements SDLDefinition<DirectiveDefinition>, NamedNode<DirectiveDefinition> {
     private final String name;
-    private Description description;
     private final List<InputValueDefinition> inputValueDefinitions;
     private final List<DirectiveLocation> directiveLocations;
 
+    public static final String CHILD_INPUT_VALUE_DEFINITIONS = "inputValueDefinitions";
+    public static final String CHILD_DIRECTIVE_LOCATION = "directiveLocation";
+
     @Internal
     protected DirectiveDefinition(String name,
-                                List<InputValueDefinition> inputValueDefinitions,
-                                List<DirectiveLocation> directiveLocations,
-                                SourceLocation sourceLocation,
-                                List<Comment> comments
-    ) {
-        super(sourceLocation, comments);
+                                  Description description,
+                                  List<InputValueDefinition> inputValueDefinitions,
+                                  List<DirectiveLocation> directiveLocations,
+                                  SourceLocation sourceLocation,
+                                  List<Comment> comments,
+                                  IgnoredChars ignoredChars,
+                                  Map<String, String> additionalData) {
+        super(sourceLocation, comments, ignoredChars, additionalData, description);
         this.name = name;
         this.inputValueDefinitions = inputValueDefinitions;
         this.directiveLocations = directiveLocations;
@@ -32,22 +43,16 @@ public class DirectiveDefinition extends AbstractNode<DirectiveDefinition> imple
 
     /**
      * alternative to using a Builder for convenience
+     *
+     * @param name of the directive definition
      */
     public DirectiveDefinition(String name) {
-        this(name, new ArrayList<>(), new ArrayList<>(), null, new ArrayList<>());
+        this(name, null, new ArrayList<>(), new ArrayList<>(), null, new ArrayList<>(), IgnoredChars.EMPTY, emptyMap());
     }
 
     @Override
     public String getName() {
         return name;
-    }
-
-    public Description getDescription() {
-        return description;
-    }
-
-    public void setDescription(Description description) {
-        this.description = description;
     }
 
     public List<InputValueDefinition> getInputValueDefinitions() {
@@ -67,22 +72,45 @@ public class DirectiveDefinition extends AbstractNode<DirectiveDefinition> imple
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .children(CHILD_INPUT_VALUE_DEFINITIONS, inputValueDefinitions)
+                .children(CHILD_DIRECTIVE_LOCATION, directiveLocations)
+                .build();
+    }
+
+    @Override
+    public DirectiveDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder
+                .inputValueDefinitions(newChildren.getChildren(CHILD_INPUT_VALUE_DEFINITIONS))
+                .directiveLocations(newChildren.getChildren(CHILD_DIRECTIVE_LOCATION))
+        );
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         DirectiveDefinition that = (DirectiveDefinition) o;
 
-        return NodeUtil.isEqualTo(this.name, that.name);
+        return Objects.equals(this.name, that.name);
     }
 
     @Override
     public DirectiveDefinition deepCopy() {
         return new DirectiveDefinition(name,
+                description,
                 deepCopy(inputValueDefinitions),
                 deepCopy(directiveLocations),
                 getSourceLocation(),
-                getComments());
+                getComments(),
+                getIgnoredChars(),
+                getAdditionalData());
     }
 
     @Override
@@ -116,6 +144,8 @@ public class DirectiveDefinition extends AbstractNode<DirectiveDefinition> imple
         private Description description;
         private List<InputValueDefinition> inputValueDefinitions = new ArrayList<>();
         private List<DirectiveLocation> directiveLocations = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
 
         private Builder() {
         }
@@ -127,6 +157,8 @@ public class DirectiveDefinition extends AbstractNode<DirectiveDefinition> imple
             this.description = existing.getDescription();
             this.inputValueDefinitions = existing.getInputValueDefinitions();
             this.directiveLocations = existing.getDirectiveLocations();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
         }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
@@ -169,10 +201,24 @@ public class DirectiveDefinition extends AbstractNode<DirectiveDefinition> imple
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
+
         public DirectiveDefinition build() {
-            DirectiveDefinition directiveDefinition = new DirectiveDefinition(name, inputValueDefinitions, directiveLocations, sourceLocation, comments);
-            directiveDefinition.setDescription(description);
-            return directiveDefinition;
+            return new DirectiveDefinition(name, description, inputValueDefinitions, directiveLocations, sourceLocation, comments, ignoredChars, additionalData);
         }
     }
 }

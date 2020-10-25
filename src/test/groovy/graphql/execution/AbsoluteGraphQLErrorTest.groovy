@@ -6,6 +6,8 @@ import graphql.language.SourceLocation
 import spock.lang.Specification
 
 import static graphql.Scalars.GraphQLString
+import static graphql.TestUtil.mergedField
+import static graphql.TestUtil.mergedSelectionSet
 import static graphql.execution.ExecutionStrategyParameters.newParameters
 import static graphql.schema.GraphQLFieldDefinition.newFieldDefinition
 import static graphql.schema.GraphQLObjectType.newObject
@@ -27,11 +29,11 @@ class AbsoluteGraphQLErrorTest extends Specification {
         def field = Field.newField().name("test").sourceLocation(new SourceLocation(4, 5)).build()
 
         def parameters = newParameters()
-                .typeInfo(ExecutionTypeInfo.newTypeInfo().type(objectType))
+                .executionStepInfo(ExecutionStepInfo.newExecutionStepInfo().type(objectType))
                 .source(new Object())
-                .fields(["fld": [Field.newField().build()]])
-                .field([field])
-                .path(ExecutionPath.fromList(["foo", "bar"]))
+                .fields(mergedSelectionSet(["fld": mergedField([Field.newField().build()])]))
+                .field(mergedField(field))
+                .path(ResultPath.fromList(["foo", "bar"]))
                 .build()
 
         def relativeError = new DataFetchingErrorGraphQLError("blah", ["fld"]) {
@@ -56,17 +58,17 @@ class AbsoluteGraphQLErrorTest extends Specification {
         error.getExtensions() == ["ext": true]
     }
 
-    def "constructor handles missing path as null"() {
+    def "constructor handles missing path"() {
         given:
 
         def field = Field.newField().name("test").sourceLocation(new SourceLocation(4, 5)).build()
 
         def parameters = newParameters()
-                .typeInfo(ExecutionTypeInfo.newTypeInfo().type(objectType))
+                .executionStepInfo(ExecutionStepInfo.newExecutionStepInfo().type(objectType))
                 .source(new Object())
-                .fields(["fld": [Field.newField().build()]])
-                .field([field])
-                .path(ExecutionPath.fromList(["foo", "bar"]))
+                .fields(mergedSelectionSet(["fld": mergedField(Field.newField().build())]))
+                .field(mergedField(field))
+                .path(ResultPath.fromList(["foo", "bar"]))
                 .build()
 
         def relativeError = new DataFetchingErrorGraphQLError("blah")
@@ -77,7 +79,7 @@ class AbsoluteGraphQLErrorTest extends Specification {
 
         then:
 
-        error.getPath() == null
+        error.getPath() == ResultPath.fromList(["foo", "bar"]).toList()
     }
 
     def "when constructor receives empty path it should return the base field path"() {
@@ -86,11 +88,11 @@ class AbsoluteGraphQLErrorTest extends Specification {
         def field = Field.newField().name("test").sourceLocation(new SourceLocation(4, 5)).build()
 
         def parameters = newParameters()
-                .typeInfo(ExecutionTypeInfo.newTypeInfo().type(objectType))
+                .executionStepInfo(ExecutionStepInfo.newExecutionStepInfo().type(objectType))
                 .source(new Object())
-                .fields(["fld": [Field.newField().build()]])
-                .field([field])
-                .path(ExecutionPath.fromList(["foo", "bar"]))
+                .fields(mergedSelectionSet(["fld": mergedField(Field.newField().build())]))
+                .field(mergedField(field))
+                .path(ResultPath.fromList(["foo", "bar"]))
                 .build()
 
         def relativeError = new DataFetchingErrorGraphQLError("blah")
@@ -111,11 +113,11 @@ class AbsoluteGraphQLErrorTest extends Specification {
         def field = Field.newField().name("test").build()
 
         def parameters = newParameters()
-                .typeInfo(ExecutionTypeInfo.newTypeInfo().type(objectType))
+                .executionStepInfo(ExecutionStepInfo.newExecutionStepInfo().type(objectType))
                 .source(new Object())
-                .fields(["fld": [Field.newField().build()]])
-                .field([field])
-                .path(ExecutionPath.fromList(["foo", "bar"]))
+                .fields(mergedSelectionSet(["fld": mergedField(Field.newField().build())]))
+                .field(mergedField(field))
+                .path(ResultPath.fromList(["foo", "bar"]))
                 .build()
 
         def relativeError = new DataFetchingErrorGraphQLError("blah")
@@ -136,11 +138,11 @@ class AbsoluteGraphQLErrorTest extends Specification {
         def field = Field.newField().name("test").sourceLocation(expectedSourceLocation).build()
 
         def parameters = newParameters()
-                .typeInfo(ExecutionTypeInfo.newTypeInfo().type(objectType))
+                .executionStepInfo(ExecutionStepInfo.newExecutionStepInfo().type(objectType))
                 .source(new Object())
-                .fields(["fld": [Field.newField().build()]])
-                .field([field])
-                .path(ExecutionPath.fromList(["foo", "bar"]))
+                .fields(mergedSelectionSet(["fld": mergedField(Field.newField().build())]))
+                .field(mergedField(field))
+                .path(ResultPath.fromList(["foo", "bar"]))
                 .build()
 
         def relativeError = new DataFetchingErrorGraphQLError("blah")
@@ -160,11 +162,11 @@ class AbsoluteGraphQLErrorTest extends Specification {
         def field = Field.newField().name("test").sourceLocation(new SourceLocation(4, 5)).build()
 
         def parameters = newParameters()
-                .typeInfo(ExecutionTypeInfo.newTypeInfo().type(objectType))
+                .executionStepInfo(ExecutionStepInfo.newExecutionStepInfo().type(objectType))
                 .source(new Object())
-                .fields(["fld": [Field.newField().build()]])
-                .field([field])
-                .path(ExecutionPath.fromList(["foo", "bar"]))
+                .fields(mergedSelectionSet(["fld": mergedField(Field.newField().build())]))
+                .field(mergedField(field))
+                .path(ResultPath.fromList(["foo", "bar"]))
                 .build()
 
         def relativeError = new DataFetchingErrorGraphQLError("blah", ["fld"])

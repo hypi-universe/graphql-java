@@ -4,10 +4,12 @@ package graphql.schema;
 import graphql.Internal;
 import graphql.PublicApi;
 import graphql.language.ScalarTypeDefinition;
+import graphql.language.ScalarTypeExtensionDefinition;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,8 +17,8 @@ import java.util.function.Consumer;
 
 import static graphql.Assert.assertNotNull;
 import static graphql.Assert.assertValidName;
+import static graphql.schema.SchemaElementChildrenContainer.newSchemaElementChildrenContainer;
 import static graphql.util.FpKit.getByName;
-import static graphql.util.FpKit.valuesToList;
 import static java.util.Collections.emptyList;
 
 /**
@@ -34,30 +36,66 @@ import static java.util.Collections.emptyList;
  *
  * @see graphql.Scalars
  */
-public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQLOutputType, GraphQLUnmodifiedType, GraphQLNullableType, GraphQLDirectiveContainer {
+@PublicApi
+public class GraphQLScalarType implements GraphQLNamedInputType, GraphQLNamedOutputType, GraphQLUnmodifiedType, GraphQLNullableType, GraphQLDirectiveContainer {
 
     private final String name;
     private final String description;
     private final Coercing coercing;
     private final ScalarTypeDefinition definition;
+    private final List<ScalarTypeExtensionDefinition> extensionDefinitions;
     private final List<GraphQLDirective> directives;
+    private final String specifiedByUrl;
 
+    public static final String CHILD_DIRECTIVES = "directives";
+
+
+    /**
+     * @param name        the name
+     * @param description the description
+     * @param coercing    the coercing function
+     *
+     * @deprecated use the {@link #newScalar()} builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLScalarType(String name, String description, Coercing coercing) {
         this(name, description, coercing, emptyList(), null);
     }
 
+    /**
+     * @param name        the name
+     * @param description the description
+     * @param coercing    the coercing function
+     * @param directives  the directives on this type element
+     * @param definition  the AST definition
+     *
+     * @deprecated use the {@link #newScalar()} builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLScalarType(String name, String description, Coercing coercing, List<GraphQLDirective> directives, ScalarTypeDefinition definition) {
+        this(name, description, coercing, directives, definition, emptyList(), null);
+    }
+
+    private GraphQLScalarType(String name,
+                              String description,
+                              Coercing coercing,
+                              List<GraphQLDirective> directives,
+                              ScalarTypeDefinition definition,
+                              List<ScalarTypeExtensionDefinition> extensionDefinitions,
+                              String specifiedByUrl) {
         assertValidName(name);
-        assertNotNull(coercing, "coercing can't be null");
-        assertNotNull(directives, "directives can't be null");
+        assertNotNull(coercing, () -> "coercing can't be null");
+        assertNotNull(directives, () -> "directives can't be null");
 
         this.name = name;
         this.description = description;
         this.coercing = coercing;
         this.definition = definition;
         this.directives = directives;
+        this.extensionDefinitions = Collections.unmodifiableList(new ArrayList<>(extensionDefinitions));
+        this.specifiedByUrl = specifiedByUrl;
     }
 
     @Override
@@ -70,6 +108,9 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
         return description;
     }
 
+    public String getSpecifiedByUrl() {
+        return specifiedByUrl;
+    }
 
     public Coercing getCoercing() {
         return coercing;
@@ -77,6 +118,10 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
 
     public ScalarTypeDefinition getDefinition() {
         return definition;
+    }
+
+    public List<ScalarTypeExtensionDefinition> getExtensionDefinitions() {
+        return extensionDefinitions;
     }
 
     @Override
@@ -108,9 +153,45 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
     }
 
     @Override
-    public TraversalControl accept(TraverserContext<GraphQLType> context, GraphQLTypeVisitor visitor) {
+    public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
         return visitor.visitGraphQLScalarType(this, context);
     }
+
+    @Override
+    public List<GraphQLSchemaElement> getChildren() {
+        return new ArrayList<>(directives);
+    }
+
+    @Override
+    public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
+        return newSchemaElementChildrenContainer()
+                .children(CHILD_DIRECTIVES, directives)
+                .build();
+    }
+
+    @Override
+    public GraphQLScalarType withNewChildren(SchemaElementChildrenContainer newChildren) {
+        return transform(builder ->
+                builder.replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
+    }
+
 
     public static Builder newScalar() {
         return new Builder();
@@ -122,12 +203,12 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
 
 
     @PublicApi
-    public static class Builder {
-        private String name;
-        private String description;
+    public static class Builder extends GraphqlTypeBuilder {
         private Coercing coercing;
         private ScalarTypeDefinition definition;
+        private List<ScalarTypeExtensionDefinition> extensionDefinitions = emptyList();
         private final Map<String, GraphQLDirective> directives = new LinkedHashMap<>();
+        private String specifiedByUrl;
 
         public Builder() {
         }
@@ -137,21 +218,41 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
             description = existing.getDescription();
             coercing = existing.getCoercing();
             definition = existing.getDefinition();
+            extensionDefinitions = existing.getExtensionDefinitions();
             directives.putAll(getByName(existing.getDirectives(), GraphQLDirective::getName));
+            specifiedByUrl = existing.getSpecifiedByUrl();
         }
 
+        @Override
         public Builder name(String name) {
-            this.name = name;
+            super.name(name);
             return this;
         }
 
+        @Override
         public Builder description(String description) {
-            this.description = description;
+            super.description(description);
+            return this;
+        }
+
+        public Builder specifiedByUrl(String specifiedByUrl) {
+            this.specifiedByUrl = specifiedByUrl;
+            return this;
+        }
+
+        @Override
+        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
+            super.comparatorRegistry(comparatorRegistry);
             return this;
         }
 
         public Builder definition(ScalarTypeDefinition definition) {
             this.definition = definition;
+            return this;
+        }
+
+        public Builder extensionDefinitions(List<ScalarTypeExtensionDefinition> extensionDefinitions) {
+            this.extensionDefinitions = extensionDefinitions;
             return this;
         }
 
@@ -168,8 +269,17 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
         }
 
         public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, "directive can't be null");
+            assertNotNull(directive, () -> "directive can't be null");
             directives.put(directive.getName(), directive);
+            return this;
+        }
+
+        public Builder replaceDirectives(List<GraphQLDirective> directives) {
+            assertNotNull(directives, () -> "directive can't be null");
+            this.directives.clear();
+            for (GraphQLDirective directive : directives) {
+                this.directives.put(directive.getName(), directive);
+            }
             return this;
         }
 
@@ -180,7 +290,7 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
         /**
          * This is used to clear all the directives in the builder so far.
          *
-         * @return the builder
+
          */
         public Builder clearDirectives() {
             directives.clear();
@@ -188,7 +298,13 @@ public class GraphQLScalarType implements GraphQLType, GraphQLInputType, GraphQL
         }
 
         public GraphQLScalarType build() {
-            return new GraphQLScalarType(name, description, coercing, valuesToList(directives), definition);
+            return new GraphQLScalarType(name,
+                    description,
+                    coercing,
+                    sort(directives, GraphQLScalarType.class, GraphQLDirective.class),
+                    definition,
+                    extensionDefinitions,
+                    specifiedByUrl);
         }
     }
 }

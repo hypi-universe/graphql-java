@@ -1,6 +1,7 @@
 package graphql.validation.rules;
 
 
+import graphql.Internal;
 import graphql.execution.TypeFromAST;
 import graphql.language.Argument;
 import graphql.language.AstComparator;
@@ -34,6 +35,7 @@ import static graphql.schema.GraphQLTypeUtil.isNonNull;
 import static graphql.schema.GraphQLTypeUtil.isNotWrapped;
 import static graphql.schema.GraphQLTypeUtil.isNullable;
 import static graphql.schema.GraphQLTypeUtil.isScalar;
+import static graphql.schema.GraphQLTypeUtil.simplePrint;
 import static graphql.schema.GraphQLTypeUtil.unwrapAll;
 import static graphql.schema.GraphQLTypeUtil.unwrapOne;
 import static graphql.validation.ValidationErrorType.FieldsConflict;
@@ -42,6 +44,7 @@ import static java.lang.String.format;
 /**
  * See http://facebook.github.io/graphql/June2018/#sec-Field-Selection-Merging
  */
+@Internal
 public class OverlappingFieldsCanBeMerged extends AbstractRule {
 
 
@@ -208,8 +211,8 @@ public class OverlappingFieldsCanBeMerged extends AbstractRule {
     }
 
     private Conflict mkNotSameTypeError(String responseName, Field fieldA, Field fieldB, GraphQLType typeA, GraphQLType typeB) {
-        String name1 = typeA != null ? typeA.getName() : "null";
-        String name2 = typeB != null ? typeB.getName() : "null";
+        String name1 = typeA != null ? simplePrint(typeA) : "null";
+        String name2 = typeB != null ? simplePrint(typeB) : "null";
         String reason = format("%s: they return differing types %s and %s", responseName, name1, name2);
         return new Conflict(responseName, reason, fieldA, fieldB);
     }
@@ -305,14 +308,14 @@ public class OverlappingFieldsCanBeMerged extends AbstractRule {
             return;
         }
         visitedFragmentSpreads.add(fragment.getName());
-        GraphQLOutputType graphQLType = (GraphQLOutputType) TypeFromAST.getTypeFromAST(getValidationContext().getSchema(),
+        GraphQLType graphQLType = TypeFromAST.getTypeFromAST(getValidationContext().getSchema(),
                 fragment.getTypeCondition());
         collectFields(fieldMap, fragment.getSelectionSet(), graphQLType, visitedFragmentSpreads);
     }
 
     private void collectFieldsForInlineFragment(Map<String, List<FieldAndType>> fieldMap, Set<String> visitedFragmentSpreads, GraphQLType parentType, InlineFragment inlineFragment) {
         GraphQLType graphQLType = inlineFragment.getTypeCondition() != null
-                ? (GraphQLOutputType) TypeFromAST.getTypeFromAST(getValidationContext().getSchema(), inlineFragment.getTypeCondition())
+                ? TypeFromAST.getTypeFromAST(getValidationContext().getSchema(), inlineFragment.getTypeCondition())
                 : parentType;
         collectFields(fieldMap, inlineFragment.getSelectionSet(), graphQLType, visitedFragmentSpreads);
     }
@@ -333,7 +336,7 @@ public class OverlappingFieldsCanBeMerged extends AbstractRule {
     }
 
     private GraphQLFieldDefinition getVisibleFieldDefinition(GraphQLFieldsContainer fieldsContainer, Field field) {
-        return getValidationContext().getSchema().getFieldVisibility().getFieldDefinition(fieldsContainer, field.getName());
+        return getValidationContext().getSchema().getCodeRegistry().getFieldVisibility().getFieldDefinition(fieldsContainer, field.getName());
     }
 
     private static class FieldPair {

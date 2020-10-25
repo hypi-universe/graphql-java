@@ -4,6 +4,7 @@ package graphql.schema;
 import graphql.DirectivesUtil;
 import graphql.Internal;
 import graphql.PublicApi;
+import graphql.language.EnumValueDefinition;
 import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
@@ -27,34 +28,69 @@ import static java.util.Collections.emptyList;
  * @see graphql.schema.GraphQLEnumType
  */
 @PublicApi
-public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
+public class GraphQLEnumValueDefinition implements GraphQLNamedSchemaElement, GraphQLDirectiveContainer {
 
     private final String name;
     private final String description;
     private final Object value;
     private final String deprecationReason;
     private final List<GraphQLDirective> directives;
+    private final EnumValueDefinition definition;
 
+    public static final String CHILD_DIRECTIVES = "directives";
+
+    /**
+     * @param name        the name
+     * @param description the description
+     * @param value       the value
+     *
+     * @deprecated use the {@link #newEnumValueDefinition()}   builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLEnumValueDefinition(String name, String description, Object value) {
         this(name, description, value, null, emptyList());
     }
 
+    /**
+     * @param name              the name
+     * @param description       the description
+     * @param value             the value
+     * @param deprecationReason the deprecation reasons
+     *
+     * @deprecated use the {@link #newEnumValueDefinition()}   builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLEnumValueDefinition(String name, String description, Object value, String deprecationReason) {
         this(name, description, value, deprecationReason, emptyList());
     }
 
+    /**
+     * @param name              the name
+     * @param description       the description
+     * @param value             the value
+     * @param deprecationReason the deprecation reasons
+     * @param directives        the directives on this type element
+     *
+     * @deprecated use the {@link #newEnumValueDefinition()}   builder pattern instead, as this constructor will be made private in a future version.
+     */
     @Internal
+    @Deprecated
     public GraphQLEnumValueDefinition(String name, String description, Object value, String deprecationReason, List<GraphQLDirective> directives) {
+        this(name, description, value, deprecationReason, directives, null);
+    }
+
+    private GraphQLEnumValueDefinition(String name, String description, Object value, String deprecationReason, List<GraphQLDirective> directives, EnumValueDefinition definition) {
         assertValidName(name);
-        assertNotNull(directives, "directives cannot be null");
+        assertNotNull(directives, () -> "directives cannot be null");
 
         this.name = name;
         this.description = description;
         this.value = value;
         this.deprecationReason = deprecationReason;
         this.directives = directives;
+        this.definition = definition;
     }
 
     @Override
@@ -90,7 +126,11 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
 
     @Override
     public GraphQLDirective getDirective(String directiveName) {
-        return getDirectivesByName().get(directiveName);
+        return DirectivesUtil.directiveByName(directives, directiveName).orElse(null);
+    }
+
+    public EnumValueDefinition getDefinition() {
+        return definition;
     }
 
     /**
@@ -108,8 +148,43 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
     }
 
     @Override
-    public TraversalControl accept(TraverserContext<GraphQLType> context, GraphQLTypeVisitor visitor) {
+    public TraversalControl accept(TraverserContext<GraphQLSchemaElement> context, GraphQLTypeVisitor visitor) {
         return visitor.visitGraphQLEnumValueDefinition(this, context);
+    }
+
+    @Override
+    public List<GraphQLSchemaElement> getChildren() {
+        return new ArrayList<>(directives);
+    }
+
+    @Override
+    public SchemaElementChildrenContainer getChildrenWithTypeReferences() {
+        return SchemaElementChildrenContainer.newSchemaElementChildrenContainer()
+                .children(CHILD_DIRECTIVES, directives)
+                .build();
+    }
+
+    @Override
+    public GraphQLEnumValueDefinition withNewChildren(SchemaElementChildrenContainer newChildren) {
+        return transform(builder ->
+                builder.replaceDirectives(newChildren.getChildren(CHILD_DIRECTIVES))
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final boolean equals(Object o) {
+        return super.equals(o);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public final int hashCode() {
+        return super.hashCode();
     }
 
 
@@ -122,11 +197,10 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
     }
 
     @PublicApi
-    public static class Builder {
-        private String name;
-        private String description;
+    public static class Builder extends GraphqlTypeBuilder {
         private Object value;
         private String deprecationReason;
+        private EnumValueDefinition definition;
         private final Map<String, GraphQLDirective> directives = new LinkedHashMap<>();
 
         public Builder() {
@@ -140,13 +214,21 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
             this.directives.putAll(getByName(existing.getDirectives(), GraphQLDirective::getName));
         }
 
+        @Override
         public Builder name(String name) {
-            this.name = name;
+            super.name(name);
             return this;
         }
 
+        @Override
         public Builder description(String description) {
-            this.description = description;
+            super.description(description);
+            return this;
+        }
+
+        @Override
+        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
+            super.comparatorRegistry(comparatorRegistry);
             return this;
         }
 
@@ -160,8 +242,13 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
             return this;
         }
 
+        public Builder definition(EnumValueDefinition definition) {
+            this.definition = definition;
+            return this;
+        }
+
         public Builder withDirectives(GraphQLDirective... directives) {
-            assertNotNull(directives, "directives can't be null");
+            assertNotNull(directives, () -> "directives can't be null");
             for (GraphQLDirective directive : directives) {
                 withDirective(directive);
             }
@@ -169,8 +256,17 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
         }
 
         public Builder withDirective(GraphQLDirective directive) {
-            assertNotNull(directive, "directive can't be null");
+            assertNotNull(directive, () -> "directive can't be null");
             directives.put(directive.getName(), directive);
+            return this;
+        }
+
+        public Builder replaceDirectives(List<GraphQLDirective> directives) {
+            assertNotNull(directives, () -> "directive can't be null");
+            this.directives.clear();
+            for (GraphQLDirective directive : directives) {
+                this.directives.put(directive.getName(), directive);
+            }
             return this;
         }
 
@@ -189,7 +285,7 @@ public class GraphQLEnumValueDefinition implements GraphQLDirectiveContainer {
         }
 
         public GraphQLEnumValueDefinition build() {
-            return new GraphQLEnumValueDefinition(name, description, value, deprecationReason, valuesToList(directives));
+            return new GraphQLEnumValueDefinition(name, description, value, deprecationReason, valuesToList(directives), definition);
         }
     }
 }

@@ -61,11 +61,9 @@ class AstValueHelperTest extends Specification {
 
         astFromValue('VALUE', GraphQLString).isEqualTo(new StringValue('VALUE'))
 
-        astFromValue('VA\n\t\f\r\b\\LUE', GraphQLString).isEqualTo(new StringValue('VA\\n\\t\\f\\r\\b\\\\LUE'))
+        astFromValue('VA\n\t\f\r\b\\LUE', GraphQLString).isEqualTo(new StringValue('VA\n\t\f\r\b\\LUE'))
 
-        astFromValue('VA/LUE', GraphQLString).isEqualTo(new StringValue('VA\\/LUE'))
-
-        astFromValue('VA\\L\"UE', GraphQLString).isEqualTo(new StringValue('VA\\\\L\\"UE'))
+        astFromValue('VA\\L\"UE', GraphQLString).isEqualTo(new StringValue('VA\\L\"UE'))
 
         astFromValue(123, GraphQLString).isEqualTo(new StringValue('123'))
 
@@ -81,7 +79,7 @@ class AstValueHelperTest extends Specification {
         astFromValue('VALUE', GraphQLID).isEqualTo(new StringValue('VALUE'))
 
         // Note: EnumValues cannot contain non-identifier characters
-        astFromValue('VA\nLUE', GraphQLID).isEqualTo(new StringValue('VA\\nLUE'))
+        astFromValue('VA\nLUE', GraphQLID).isEqualTo(new StringValue('VA\nLUE'))
 
         // Note: IntValues are used when possible.
         astFromValue(123, GraphQLID).isEqualTo(new IntValue(bigInt(123)))
@@ -110,12 +108,6 @@ class AstValueHelperTest extends Specification {
         astFromValue('HELLO', myEnum).isEqualTo(new EnumValue('HELLO'))
 
         astFromValue(complexValue, myEnum).isEqualTo(new EnumValue('COMPLEX'))
-
-//        // Note: case sensitive
-//        astFromValue('hello', myEnum) == null
-//
-//        // Note: Not a valid enum value
-//        astFromValue('VALUE', myEnum) == null
     }
 
     def 'converts array values to List ASTs'() {
@@ -137,19 +129,43 @@ class AstValueHelperTest extends Specification {
         )
     }
 
+    class SomePojo {
+        def foo = 3
+        def bar = "HELLO"
+    }
+    class SomePojoWithFields {
+        public float foo = 3
+        public String bar = "HELLO"
+    }
+
     def 'converts input objects'() {
-        expect:
+        given:
         def inputObj = GraphQLInputObjectType.newInputObject()
                 .name('MyInputObj')
                 .field({ f -> f.name("foo").type(GraphQLFloat) })
                 .field({ f -> f.name("bar").type(myEnum) })
                 .build()
+        expect:
 
         astFromValue([foo: 3, bar: 'HELLO'], inputObj).isEqualTo(
                 new ObjectValue([new ObjectField("foo", new IntValue(bigInt(3))),
                                  new ObjectField("bar", new EnumValue('HELLO')),
                 ])
         )
+
+        astFromValue(new SomePojo(), inputObj).isEqualTo(
+                new ObjectValue([new ObjectField("foo", new IntValue(bigInt(3))),
+                                 new ObjectField("bar", new EnumValue('HELLO')),
+                ])
+        )
+
+        astFromValue(new SomePojoWithFields(), inputObj).isEqualTo(
+                new ObjectValue([new ObjectField("foo", new IntValue(bigInt(3))),
+                                 new ObjectField("bar", new EnumValue('HELLO')),
+                ])
+        )
+
+
     }
 
     def 'converts input objects with explicit nulls'() {
@@ -179,28 +195,4 @@ class AstValueHelperTest extends Specification {
         '{string : "s", integer : 1, boolean : true}' | ObjectValue.class
     }
 
-    def "1105 - encoding of json strings"() {
-
-        when:
-        def json = AstValueHelper.jsonStringify(strValue)
-
-        then:
-        json == expected
-
-        where:
-        strValue                                  | expected
-        ''                                        | ''
-        'json'                                    | 'json'
-        'quotation-"'                             | 'quotation-\\"'
-        'reverse-solidus-\\'                      | 'reverse-solidus-\\\\'
-        'solidus-/'                               | 'solidus-\\/'
-        'backspace-\b'                            | 'backspace-\\b'
-        'formfeed-\f'                             | 'formfeed-\\f'
-        'newline-\n'                              | 'newline-\\n'
-        'carriage-return-\r'                      | 'carriage-return-\\r'
-        'horizontal-tab-\t'                       | 'horizontal-tab-\\t'
-
-        // this is some AST from issue 1105
-        '''"{"operator":"eq", "operands": []}"''' | '''\\"{\\"operator\\":\\"eq\\", \\"operands\\": []}\\"'''
-    }
 }

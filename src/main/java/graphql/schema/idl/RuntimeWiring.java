@@ -2,12 +2,17 @@ package graphql.schema.idl;
 
 import graphql.PublicApi;
 import graphql.schema.DataFetcher;
+import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
+import graphql.schema.GraphqlTypeComparatorRegistry;
 import graphql.schema.TypeResolver;
 import graphql.schema.visibility.GraphqlFieldVisibility;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
 
@@ -15,7 +20,7 @@ import static graphql.Assert.assertNotNull;
 import static graphql.schema.visibility.DefaultGraphqlFieldVisibility.DEFAULT_FIELD_VISIBILITY;
 
 /**
- * A runtime wiring is a specification of data fetchers, type resolves and custom scalars that are needed
+ * A runtime wiring is a specification of data fetchers, type resolvers and custom scalars that are needed
  * to wire together a functional {@link GraphQLSchema}
  */
 @PublicApi
@@ -25,20 +30,28 @@ public class RuntimeWiring {
     private final Map<String, DataFetcher> defaultDataFetchers;
     private final Map<String, GraphQLScalarType> scalars;
     private final Map<String, TypeResolver> typeResolvers;
-    private final Map<String, SchemaDirectiveWiring> directiveWiring;
+    private final Map<String, SchemaDirectiveWiring> registeredDirectiveWiring;
+    private final List<SchemaDirectiveWiring> directiveWiring;
     private final WiringFactory wiringFactory;
     private final Map<String, EnumValuesProvider> enumValuesProviders;
+    private final Collection<SchemaGeneratorPostProcessing> schemaGeneratorPostProcessings;
     private final GraphqlFieldVisibility fieldVisibility;
+    private final GraphQLCodeRegistry codeRegistry;
+    private final GraphqlTypeComparatorRegistry comparatorRegistry;
 
-    private RuntimeWiring(Map<String, Map<String, DataFetcher>> dataFetchers, Map<String, DataFetcher> defaultDataFetchers, Map<String, GraphQLScalarType> scalars, Map<String, TypeResolver> typeResolvers, Map<String, SchemaDirectiveWiring> directiveWiring, Map<String, EnumValuesProvider> enumValuesProviders, WiringFactory wiringFactory, GraphqlFieldVisibility fieldVisibility) {
-        this.dataFetchers = dataFetchers;
-        this.defaultDataFetchers = defaultDataFetchers;
-        this.scalars = scalars;
-        this.typeResolvers = typeResolvers;
-        this.directiveWiring = directiveWiring;
-        this.wiringFactory = wiringFactory;
-        this.enumValuesProviders = enumValuesProviders;
-        this.fieldVisibility = fieldVisibility;
+    private RuntimeWiring(Builder builder) {
+        this.dataFetchers = builder.dataFetchers;
+        this.defaultDataFetchers = builder.defaultDataFetchers;
+        this.scalars = builder.scalars;
+        this.typeResolvers = builder.typeResolvers;
+        this.registeredDirectiveWiring = builder.registeredDirectiveWiring;
+        this.directiveWiring = builder.directiveWiring;
+        this.wiringFactory = builder.wiringFactory;
+        this.enumValuesProviders = builder.enumValuesProviders;
+        this.schemaGeneratorPostProcessings = builder.schemaGeneratorPostProcessings;
+        this.fieldVisibility = builder.fieldVisibility;
+        this.codeRegistry = builder.codeRegistry;
+        this.comparatorRegistry = builder.comparatorRegistry;
     }
 
     /**
@@ -46,6 +59,10 @@ public class RuntimeWiring {
      */
     public static Builder newRuntimeWiring() {
         return new Builder();
+    }
+
+    public GraphQLCodeRegistry getCodeRegistry() {
+        return codeRegistry;
     }
 
     public Map<String, GraphQLScalarType> getScalars() {
@@ -80,8 +97,20 @@ public class RuntimeWiring {
         return fieldVisibility;
     }
 
-    public Map<String, SchemaDirectiveWiring> getDirectiveWiring() {
+    public Map<String, SchemaDirectiveWiring> getRegisteredDirectiveWiring() {
+        return registeredDirectiveWiring;
+    }
+
+    public List<SchemaDirectiveWiring> getDirectiveWiring() {
         return directiveWiring;
+    }
+
+    public Collection<SchemaGeneratorPostProcessing> getSchemaGeneratorPostProcessings() {
+        return schemaGeneratorPostProcessings;
+    }
+
+    public GraphqlTypeComparatorRegistry getComparatorRegistry() {
+        return comparatorRegistry;
     }
 
     @PublicApi
@@ -91,14 +120,18 @@ public class RuntimeWiring {
         private final Map<String, GraphQLScalarType> scalars = new LinkedHashMap<>();
         private final Map<String, TypeResolver> typeResolvers = new LinkedHashMap<>();
         private final Map<String, EnumValuesProvider> enumValuesProviders = new LinkedHashMap<>();
-        private final Map<String, SchemaDirectiveWiring> directiveWiring = new LinkedHashMap<>();
+        private final Map<String, SchemaDirectiveWiring> registeredDirectiveWiring = new LinkedHashMap<>();
+        private final List<SchemaDirectiveWiring> directiveWiring = new ArrayList<>();
+        private final Collection<SchemaGeneratorPostProcessing> schemaGeneratorPostProcessings = new ArrayList<>();
         private WiringFactory wiringFactory = new NoopWiringFactory();
         private GraphqlFieldVisibility fieldVisibility = DEFAULT_FIELD_VISIBILITY;
+        private GraphQLCodeRegistry codeRegistry = GraphQLCodeRegistry.newCodeRegistry().build();
+        private GraphqlTypeComparatorRegistry comparatorRegistry = GraphqlTypeComparatorRegistry.AS_IS_REGISTRY;
 
         private Builder() {
-            ScalarInfo.STANDARD_SCALARS.forEach(this::scalar);
+            ScalarInfo.GRAPHQL_SPECIFICATION_SCALARS.forEach(this::scalar);
             // we give this out by default
-            directiveWiring.put(FetchSchemaDirectiveWiring.FETCH, new FetchSchemaDirectiveWiring());
+            registeredDirectiveWiring.put(FetchSchemaDirectiveWiring.FETCH, new FetchSchemaDirectiveWiring());
         }
 
         /**
@@ -109,8 +142,32 @@ public class RuntimeWiring {
          * @return this outer builder
          */
         public Builder wiringFactory(WiringFactory wiringFactory) {
-            assertNotNull(wiringFactory, "You must provide a wiring factory");
+            assertNotNull(wiringFactory, () -> "You must provide a wiring factory");
             this.wiringFactory = wiringFactory;
+            return this;
+        }
+
+        /**
+         * This allows you to seed in your own {@link graphql.schema.GraphQLCodeRegistry} instance
+         *
+         * @param codeRegistry the code registry to use
+         *
+         * @return this outer builder
+         */
+        public Builder codeRegistry(GraphQLCodeRegistry codeRegistry) {
+            this.codeRegistry = assertNotNull(codeRegistry);
+            return this;
+        }
+
+        /**
+         * This allows you to seed in your own {@link graphql.schema.GraphQLCodeRegistry} instance
+         *
+         * @param codeRegistry the code registry to use
+         *
+         * @return this outer builder
+         */
+        public Builder codeRegistry(GraphQLCodeRegistry.Builder codeRegistry) {
+            this.codeRegistry = assertNotNull(codeRegistry).build();
             return this;
         }
 
@@ -190,16 +247,69 @@ public class RuntimeWiring {
 
         /**
          * This provides the wiring code for a named directive.
+         * <p>
+         * Note: The provided directive wiring will ONLY be called back if an element has a directive
+         * with the specified name.
+         * <p>
+         * To be called back for every directive the use {@link #directiveWiring(SchemaDirectiveWiring)} or
+         * use {@link graphql.schema.idl.WiringFactory#providesSchemaDirectiveWiring(SchemaDirectiveWiringEnvironment)}
+         * instead.
          *
          * @param directiveName         the name of the directive to wire
          * @param schemaDirectiveWiring the runtime behaviour of this wiring
          *
          * @return the runtime wiring builder
          *
+         * @see #directiveWiring(SchemaDirectiveWiring)
          * @see graphql.schema.idl.SchemaDirectiveWiring
+         * @see graphql.schema.idl.WiringFactory#providesSchemaDirectiveWiring(SchemaDirectiveWiringEnvironment)
          */
         public Builder directive(String directiveName, SchemaDirectiveWiring schemaDirectiveWiring) {
-            directiveWiring.put(directiveName, schemaDirectiveWiring);
+            registeredDirectiveWiring.put(directiveName, schemaDirectiveWiring);
+            return this;
+        }
+
+        /**
+         * This adds a directive wiring that will be called for all directives.
+         * <p>
+         * Note : Unlike {@link #directive(String, SchemaDirectiveWiring)} which is only called back if a  named
+         * directives is present, this directive wiring will be called back for every element
+         * in the schema even if it has zero directives.
+         *
+         * @param schemaDirectiveWiring the runtime behaviour of this wiring
+         *
+         * @return the runtime wiring builder
+         *
+         * @see #directive(String, SchemaDirectiveWiring)
+         * @see graphql.schema.idl.SchemaDirectiveWiring
+         * @see graphql.schema.idl.WiringFactory#providesSchemaDirectiveWiring(SchemaDirectiveWiringEnvironment)
+         */
+        public Builder directiveWiring(SchemaDirectiveWiring schemaDirectiveWiring) {
+            directiveWiring.add(schemaDirectiveWiring);
+            return this;
+        }
+
+        /**
+         * You can specify your own sort order of graphql types via {@link graphql.schema.GraphqlTypeComparatorRegistry}
+         * which will tell you what type of objects you are to sort when
+         * it asks for a comparator.
+         *
+         * @return the runtime wiring builder
+         */
+        public Builder comparatorRegistry(GraphqlTypeComparatorRegistry comparatorRegistry) {
+            this.comparatorRegistry = comparatorRegistry;
+            return this;
+        }
+
+        /**
+         * Adds a schema transformer into the mix
+         *
+         * @param schemaGeneratorPostProcessing the non null schema transformer to add
+         *
+         * @return the runtime wiring builder
+         */
+        public Builder transformer(SchemaGeneratorPostProcessing schemaGeneratorPostProcessing) {
+            this.schemaGeneratorPostProcessings.add(assertNotNull(schemaGeneratorPostProcessing));
             return this;
         }
 
@@ -207,11 +317,9 @@ public class RuntimeWiring {
          * @return the built runtime wiring
          */
         public RuntimeWiring build() {
-            return new RuntimeWiring(dataFetchers, defaultDataFetchers, scalars, typeResolvers, directiveWiring, enumValuesProviders, wiringFactory, fieldVisibility);
+            return new RuntimeWiring(this);
         }
 
     }
-
-
 }
 

@@ -7,24 +7,35 @@ import graphql.util.TraversalControl;
 import graphql.util.TraverserContext;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import static graphql.Assert.assertNotNull;
+import static graphql.language.NodeChildrenContainer.newNodeChildrenContainer;
 import static graphql.language.NodeUtil.directivesByName;
+import static graphql.language.NodeUtil.directiveByName;
 
 @PublicApi
-public class SchemaDefinition extends AbstractNode<SchemaDefinition> implements SDLDefinition<SchemaDefinition> {
+public class SchemaDefinition extends AbstractDescribedNode<SchemaDefinition> implements SDLDefinition<SchemaDefinition> {
 
     private final List<Directive> directives;
     private final List<OperationTypeDefinition> operationTypeDefinitions;
 
+    public static final String CHILD_DIRECTIVES = "directives";
+    public static final String CHILD_OPERATION_TYPE_DEFINITIONS = "operationTypeDefinitions";
+
+
     @Internal
     protected SchemaDefinition(List<Directive> directives,
-                             List<OperationTypeDefinition> operationTypeDefinitions,
-                             SourceLocation sourceLocation,
-                             List<Comment> comments) {
-        super(sourceLocation, comments);
+                               List<OperationTypeDefinition> operationTypeDefinitions,
+                               SourceLocation sourceLocation,
+                               List<Comment> comments,
+                               IgnoredChars ignoredChars,
+                               Map<String, String> additionalData,
+                               Description description) {
+        super(sourceLocation, comments, ignoredChars, additionalData, description);
         this.directives = directives;
         this.operationTypeDefinitions = operationTypeDefinitions;
     }
@@ -38,12 +49,16 @@ public class SchemaDefinition extends AbstractNode<SchemaDefinition> implements 
     }
 
     public Directive getDirective(String directiveName) {
-        return getDirectivesByName().get(directiveName);
+        return directiveByName(directives, directiveName).orElse(null);
     }
 
 
     public List<OperationTypeDefinition> getOperationTypeDefinitions() {
-        return operationTypeDefinitions;
+        return new ArrayList<>(operationTypeDefinitions);
+    }
+
+    public Description getDescription() {
+        return description;
     }
 
     @Override
@@ -55,18 +70,36 @@ public class SchemaDefinition extends AbstractNode<SchemaDefinition> implements 
     }
 
     @Override
+    public NodeChildrenContainer getNamedChildren() {
+        return newNodeChildrenContainer()
+                .children(CHILD_DIRECTIVES, directives)
+                .children(CHILD_OPERATION_TYPE_DEFINITIONS, operationTypeDefinitions)
+                .build();
+    }
+
+    @Override
+    public SchemaDefinition withNewChildren(NodeChildrenContainer newChildren) {
+        return transform(builder -> builder
+                .directives(newChildren.getChildren(CHILD_DIRECTIVES))
+                .operationTypeDefinitions(newChildren.getChildren(CHILD_OPERATION_TYPE_DEFINITIONS))
+        );
+    }
+
+    @Override
     public boolean isEqualTo(Node o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-
-        SchemaDefinition that = (SchemaDefinition) o;
-
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         return true;
     }
 
     @Override
     public SchemaDefinition deepCopy() {
-        return new SchemaDefinition(deepCopy(directives), deepCopy(operationTypeDefinitions), getSourceLocation(), getComments());
+        return new SchemaDefinition(deepCopy(directives), deepCopy(operationTypeDefinitions), getSourceLocation(), getComments(),
+                getIgnoredChars(), getAdditionalData(), description);
     }
 
     @Override
@@ -92,22 +125,33 @@ public class SchemaDefinition extends AbstractNode<SchemaDefinition> implements 
         return new Builder();
     }
 
-    public static final class Builder implements NodeBuilder {
+    public static final class Builder implements NodeDirectivesBuilder {
         private SourceLocation sourceLocation;
         private List<Comment> comments = new ArrayList<>();
         private List<Directive> directives = new ArrayList<>();
         private List<OperationTypeDefinition> operationTypeDefinitions = new ArrayList<>();
+        private IgnoredChars ignoredChars = IgnoredChars.EMPTY;
+        private Map<String, String> additionalData = new LinkedHashMap<>();
+        private Description description;
 
-        private Builder() {
+
+        protected Builder() {
         }
 
-        private Builder(SchemaDefinition existing) {
+        protected Builder(SchemaDefinition existing) {
             this.sourceLocation = existing.getSourceLocation();
             this.comments = existing.getComments();
             this.directives = existing.getDirectives();
             this.operationTypeDefinitions = existing.getOperationTypeDefinitions();
+            this.ignoredChars = existing.getIgnoredChars();
+            this.additionalData = new LinkedHashMap<>(existing.getAdditionalData());
+            this.description = existing.getDescription();
         }
 
+        public Builder description(Description description) {
+            this.description = description;
+            return this;
+        }
 
         public Builder sourceLocation(SourceLocation sourceLocation) {
             this.sourceLocation = sourceLocation;
@@ -119,6 +163,7 @@ public class SchemaDefinition extends AbstractNode<SchemaDefinition> implements 
             return this;
         }
 
+        @Override
         public Builder directives(List<Directive> directives) {
             this.directives = directives;
             return this;
@@ -139,12 +184,29 @@ public class SchemaDefinition extends AbstractNode<SchemaDefinition> implements 
             return this;
         }
 
+        public Builder ignoredChars(IgnoredChars ignoredChars) {
+            this.ignoredChars = ignoredChars;
+            return this;
+        }
+
+        public Builder additionalData(Map<String, String> additionalData) {
+            this.additionalData = assertNotNull(additionalData);
+            return this;
+        }
+
+        public Builder additionalData(String key, String value) {
+            this.additionalData.put(key, value);
+            return this;
+        }
+
         public SchemaDefinition build() {
-            SchemaDefinition schemaDefinition = new SchemaDefinition(directives,
+            return new SchemaDefinition(directives,
                     operationTypeDefinitions,
                     sourceLocation,
-                    comments);
-            return schemaDefinition;
+                    comments,
+                    ignoredChars,
+                    additionalData,
+                    description);
         }
     }
 }

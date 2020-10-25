@@ -1,15 +1,19 @@
 package graphql.schema;
 
 
+import graphql.PublicApi;
+
 import java.util.List;
 import java.util.Map;
 
 import static graphql.DirectivesUtil.directivesByName;
+import static graphql.DirectivesUtil.directiveByName;
 
 /**
  * Represents a graphql object that can have {@link graphql.schema.GraphQLDirective}s
  */
-public interface GraphQLDirectiveContainer extends GraphQLType {
+@PublicApi
+public interface GraphQLDirectiveContainer extends GraphQLNamedSchemaElement {
 
     /**
      * @return a list of directives associated with the type or field
@@ -31,7 +35,7 @@ public interface GraphQLDirectiveContainer extends GraphQLType {
      * @return the directive or null if there is one one with that name
      */
     default GraphQLDirective getDirective(String directiveName) {
-        return getDirectivesByName().get(directiveName);
+        return directiveByName(getDirectives(), directiveName).orElse(null);
     }
 
 }

@@ -1,6 +1,7 @@
 package graphql.validation.rules;
 
 
+import graphql.Internal;
 import graphql.execution.TypeFromAST;
 import graphql.language.OperationDefinition;
 import graphql.language.VariableDefinition;
@@ -16,6 +17,7 @@ import graphql.validation.ValidationErrorType;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+@Internal
 public class VariableTypesMatchRule extends AbstractRule {
 
     final VariablesTypesMatcher variablesTypesMatcher;
@@ -60,8 +62,8 @@ public class VariableTypesMatchRule extends AbstractRule {
         if (!variablesTypesMatcher.doesVariableTypesMatch(variableType, variableDefinition.getDefaultValue(), expectedType)) {
             GraphQLType effectiveType = variablesTypesMatcher.effectiveType(variableType, variableDefinition.getDefaultValue());
             String message = String.format("Variable type '%s' doesn't match expected type '%s'",
-                    GraphQLTypeUtil.getUnwrappedTypeName(effectiveType),
-                    GraphQLTypeUtil.getUnwrappedTypeName(expectedType));
+                    GraphQLTypeUtil.simplePrint(effectiveType),
+                    GraphQLTypeUtil.simplePrint(expectedType));
             addError(ValidationErrorType.VariableTypeMismatch, variableReference.getSourceLocation(), message);
         }
     }
